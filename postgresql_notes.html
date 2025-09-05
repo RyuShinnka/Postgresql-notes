@@ -1,0 +1,1195 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PostgreSQL 学习笔记（全量合并版）</title>
+<style>
+:root{
+  --bg: linear-gradient(135deg, #0b1220, #1a2538);
+  --card:#111a2b;
+  --border:#2c3a52;
+  --text:#d1dae5;
+  --muted:#8a9bb2;
+  --accent:#6aaee0;
+  --green:#7fcfa1;
+  --orange:#e29b4a;
+  --red:#e57373;
+  --code:#0a101a;
+}
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font:16px/1.65 "Inter","Noto Sans SC","Noto Sans CJK SC","Segoe UI",system-ui,-apple-system,sans-serif;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1100px;margin:32px auto;padding:0 16px}
+  header{margin-bottom:24px}
+  h1{font-size:28px;letter-spacing:.3px;margin:0 0 8px 0}
+  .meta{color:var(--muted);font-size:14px}
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+  .card{grid-column:1/-1;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px}
+  h2{font-size:22px;margin:4px 0 12px 0}
+  h3{font-size:18px;margin:18px 0 8px 0}
+  p{margin:8px 0}
+  ul{margin:6px 0 12px 18px}
+  code,kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", monospace}
+  pre{background:var(--code);border:1px solid var(--border);border-radius:12px;padding:12px;overflow:auto}
+  .tag{display:inline-block;border:1px solid var(--border);padding:2px 8px;border-radius:999px;color:var(--muted);font-size:12px;margin-right:8px}
+  .ok{color:var(--green)} .warn{color:var(--orange)} .bad{color:var(--red)}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width: 760px){ .two-col{grid-template-columns:1fr;} }
+  nav.toc{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:16px}
+  nav.toc ol{margin:0 0 0 18px}
+  nav.toc a{font-size:14px}
+  .anchor{scroll-margin-top:80px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>PostgreSQL 学习笔记（全量合并版）</h1>
+      <div class="meta">仅保留 PostgreSQL 相关内容；将 MySQL 里“在 PostgreSQL 也适用”的部分已等价改写。保留你提供的所有细节与示例，不再简化。</div>
+    </header>
+
+    <nav class="toc card">
+      <strong>目录</strong>
+      <ol>
+        <li><a href="#s1">SQL 执行顺序（通用）</a></li>
+        <li><a href="#s2">字符串 / 正则（含 REGEXP 等价写法）</a></li>
+        <li><a href="#s3">日期时间与间隔：EXTRACT / INTERVAL / 时间差</a></li>
+        <li><a href="#s4">TRUNCATE / ALTER TABLE（PostgreSQL 写法）</a></li>
+        <li><a href="#s5">窗口函数与窗口帧</a></li>
+        <li><a href="#s6">JOIN 全家桶</a></li>
+        <li><a href="#s7">LIKE / ILIKE 与操作符</a></li>
+        <li><a href="#s8">集合操作：UNION / INTERSECT / EXCEPT</a></li>
+        <li><a href="#s9">GROUPING SETS / CUBE / ROLLUP</a></li>
+        <li><a href="#s10">子查询：ANY / ALL / EXISTS / NOT EXISTS</a></li>
+        <li><a href="#s11">CTE 与递归 CTE</a></li>
+        <li><a href="#s12">DML：INSERT...SELECT / UPDATE...FROM / UPSERT</a></li>
+        <li><a href="#s13">事务</a></li>
+        <li><a href="#s14">创建数据库与对象大小</a></li>
+        <li><a href="#s15">创建表、列/表级约束（PK/FK/UNIQUE/CHECK/NOT NULL）</a></li>
+        <li><a href="#s16">SELECT INTO / CREATE TABLE AS</a></li>
+        <li><a href="#s17">自增：SERIAL / SEQUENCE / IDENTITY（含管理）</a></li>
+        <li><a href="#s18">ALTER TABLE / DROP TABLE</a></li>
+        <li><a href="#s19">案例：按日统计售卖率（PostgreSQL 版）</a></li>
+        <li><a href="#s20">DISTINCT ON（每组取一行）</a></li>
+        <li><a href="#s21">分页：LIMIT/OFFSET 与锚点翻页</a></li>
+        <li><a href="#s22">BOOLEAN（布尔类型）</a></li>
+        <li><a href="#s23">字符数据类型</a></li>
+        <li><a href="#s24">数值类型总览与函数</a></li>
+        <li><a href="#s25">整数类型与 SERIAL（强化）</a></li>
+        <li><a href="#s26">日期与时间数据类型（总览）</a></li>
+        <li><a href="#s27">TIMESTAMP vs TIMESTAMPTZ</a></li>
+        <li><a href="#s28">INTERVAL（时间间隔）</a></li>
+        <li><a href="#s29">UUID</a></li>
+        <li><a href="#s30">数组类型</a></li>
+        <li><a href="#s31">JSON / JSONB</a></li>
+        <li><a href="#s32">从 JSON 提取数值并聚合</a></li>
+        <li><a href="#s33">Schema 管理</a></li>
+        <li><a href="#s34">COALESCE</a></li>
+        <li><a href="#s35">NULLIF</a></li>
+        <li><a href="#s36">CAST / ::</a></li>
+        <li><a href="#s37">CASE 表达式</a></li>
+        <li><a href="#s38">删除重复数据（DELETE USING）</a></li>
+        <li><a href="#s39">RANDOM()</a></li>
+        <li><a href="#s40">EXPLAIN</a></li>
+        <li><a href="#s41">PostgreSQL vs MySQL 对比</a></li>
+        <li><a href="#s42">EXCEPT 补充</a></li>
+        <li><a href="#s43">PL/pgSQL：块结构</a></li>
+        <li><a href="#s44">PL/pgSQL：变量</a></li>
+        <li><a href="#s45">PL/pgSQL：常量</a></li>
+        <li><a href="#s46">创建函数与存储过程</a></li>
+        <li><a href="#s47">函数参数四种模式</a></li>
+        <li><a href="#s48">函数重载</a></li>
+      </ol>
+    </nav>
+
+    <section class="grid">
+
+      <article class="card anchor" id="s1">
+        <h2>1）SQL 执行顺序（通用，适用于 PostgreSQL）</h2>
+        <p><span class="tag">FROM/ON</span> → <span class="tag">WHERE</span> → <span class="tag">GROUP BY</span> → <span class="tag">HAVING</span> → <span class="tag">SELECT（窗口函数在此阶段）</span> → <span class="tag">ORDER BY</span></p>
+      </article>
+
+      <article class="card anchor" id="s2">
+        <h2>2）字符串 / 正则（替代 MySQL REGEXP_SUBSTR）</h2>
+        <ul>
+          <li><b>字符串拼接：</b> <code>expr1 || expr2</code></li>
+          <li><b>长度：</b> <code>char_length(text)</code>（字符数），<code>octet_length(text)</code>（字节数）；<code>length(text)</code> 等价于 <code>char_length</code></li>
+        </ul>
+        <pre><code>-- 取第一个匹配子串（等价 REGEXP_SUBSTR 的基本场景）
+SELECT substring('abc-123-def' FROM '\d+');  -- → '123'
+
+-- 全部匹配（返回 setof text）
+SELECT regexp_matches('a1b22c333', '\d+', 'g');  -- 多行返回 1,22,333
+
+-- 是否匹配
+SELECT 'foo@example.com' ~ '^[^@]+@[^@]+$';  -- true/false
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s3">
+        <h2>3）日期时间与间隔：EXTRACT / INTERVAL / 时间差</h2>
+        <div class="two-col">
+          <div>
+            <h3>时间差（替代 MySQL TIMESTAMPDIFF）</h3>
+            <pre><code>-- 两个时间相减得到 interval
+SELECT end_ts - start_ts AS diff;
+
+-- 转分钟数
+SELECT EXTRACT(EPOCH FROM (end_ts - start_ts)) / 60 AS minutes;
+</code></pre>
+          </div>
+          <div>
+            <h3>日期加减（替代 DATE_ADD / DATE_SUB）</h3>
+            <pre><code>SELECT ts + INTERVAL '3 days';
+SELECT ts - INTERVAL '2 hours';
+SELECT CURRENT_DATE + INTERVAL '1 month';
+</code></pre>
+          </div>
+        </div>
+        <h3>EXTRACT</h3>
+        <pre><code>SELECT EXTRACT(YEAR  FROM ts),
+       EXTRACT(MONTH FROM ts),
+       EXTRACT(DAY   FROM ts);
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s4">
+        <h2>4）TRUNCATE / ALTER TABLE（PostgreSQL 写法）</h2>
+        <div class="two-col">
+          <div>
+            <h3>TRUNCATE</h3>
+            <pre><code>TRUNCATE TABLE table_name RESTART IDENTITY;  -- 重置自增
+-- 可选：CASCADE 级联
+</code></pre>
+          </div>
+          <div>
+            <h3>列操作（PostgreSQL 没有 MySQL 的 CHANGE/MODIFY/AFTER）</h3>
+            <pre><code>-- 添加列
+ALTER TABLE t ADD COLUMN name type;
+
+-- 修改类型
+ALTER TABLE t ALTER COLUMN name TYPE new_type;
+
+-- 重命名列
+ALTER TABLE t RENAME COLUMN old TO new;
+
+-- 设置/取消默认值
+ALTER TABLE t ALTER COLUMN name SET DEFAULT ...;
+ALTER TABLE t ALTER COLUMN name DROP DEFAULT;
+
+-- 非空/可空
+ALTER TABLE t ALTER COLUMN name SET NOT NULL;
+ALTER TABLE t ALTER COLUMN name DROP NOT NULL;
+</code></pre>
+          </div>
+        </div>
+      </article>
+
+      <article class="card anchor" id="s5">
+        <h2>5）窗口函数与窗口帧</h2>
+        <h3>常用函数</h3>
+        <p><code>SUM</code> / <code>AVG</code> / <code>COUNT</code> / <code>MIN</code> / <code>MAX</code>，<code>ROW_NUMBER</code>，<code>RANK</code>，<code>DENSE_RANK</code>，<code>NTILE(n)</code>，<code>FIRST_VALUE</code>，<code>LAST_VALUE</code>，<code>NTH_VALUE</code>，<code>LAG</code>，<code>LEAD</code></p>
+        <h3>窗口帧（ROWS / RANGE）</h3>
+        <pre><code>ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+ROWS BETWEEN 3 PRECEDING AND CURRENT ROW
+
+-- 基于值范围（日期/数值）
+RANGE BETWEEN INTERVAL '30 days' PRECEDING AND CURRENT ROW
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s6">
+        <h2>6）JOIN 全家桶</h2>
+        <ul>
+          <li><b>INNER JOIN：</b> 仅保留匹配行</li>
+          <li><b>LEFT JOIN：</b> 左表全部 + 右表匹配，右侧缺失填 NULL</li>
+          <li><b>RIGHT JOIN：</b> 右表全部 + 左表匹配</li>
+          <li><b>FULL OUTER JOIN：</b> 两侧所有行的并集（MySQL 不支持）</li>
+          <li><b>CROSS JOIN：</b> 笛卡尔积</li>
+          <li><b>NATURAL JOIN：</b> 同名列自动连接（不透明，生产不推荐）</li>
+          <li><b>SELF JOIN：</b> 同表自连接（层级/对比/去重等）</li>
+        </ul>
+      </article>
+
+      <article class="card anchor" id="s7">
+        <h2>7）LIKE / ILIKE 与操作符</h2>
+        <ul>
+          <li><code>LIKE</code>（区分大小写），<code>ILIKE</code>（不区分大小写）</li>
+          <li>等价操作符：<code>~~</code> / <code>!~~</code> / <code>~~*</code> / <code>!~~*</code>（常用写法仍建议 LIKE/ILIKE）</li>
+        </ul>
+      </article>
+
+      <article class="card anchor" id="s8">
+        <h2>8）集合操作：UNION / INTERSECT / EXCEPT</h2>
+        <ul>
+          <li><b>UNION</b>（去重） / <b>UNION ALL</b>（不去重）</li>
+          <li><b>INTERSECT</b>（交集，去重；<code>INTERSECT ALL</code> 保留重复）</li>
+          <li><b>EXCEPT</b>（差集，去重；<code>EXCEPT ALL</code> 保留重复）</li>
+        </ul>
+      </article>
+
+      <article class="card anchor" id="s9">
+        <h2>9）GROUPING SETS / CUBE / ROLLUP</h2>
+        <pre><code>-- GROUPING SETS：一个查询中进行多种分组
+SELECT region, product, SUM(sales)
+FROM fact
+GROUP BY GROUPING SETS ((region, product), (region), ());
+
+-- CUBE：所有维度的全组合
+SELECT region, product, SUM(sales)
+FROM fact
+GROUP BY CUBE (region, product);
+
+-- ROLLUP：逐级汇总（细 → 粗）
+SELECT y, m, SUM(sales)
+FROM fact
+GROUP BY ROLLUP (y, m);
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s10">
+        <h2>10）子查询：ANY / ALL / EXISTS / NOT EXISTS</h2>
+        <pre><code>-- = ANY 等价于 IN
+x = ANY (SELECT id FROM t)
+
+-- &gt; ANY 大于集合最小值； &lt; ANY 小于集合最大值
+x &gt; ANY (SELECT val FROM t)
+
+-- ALL：与集合全部比较都成立
+x &gt; ALL (SELECT val FROM t)
+
+-- EXISTS：子查询返回至少一行即为 true
+WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id)
+
+-- NOT EXISTS：查“孤儿数据”
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s11">
+        <h2>11）CTE 与递归 CTE</h2>
+        <pre><code>-- 普通 CTE
+WITH c AS (
+  SELECT ... FROM ...
+)
+SELECT * FROM c;
+
+-- 递归 CTE（树/图/层级）
+WITH RECURSIVE cte_name AS (
+  -- ① 基础查询（起点）
+  SELECT ...
+  FROM table
+  WHERE ...
+  UNION ALL
+  -- ② 递归部分（自我引用）
+  SELECT ...
+  FROM table t
+  JOIN cte_name c ON t.parent_id = c.id
+)
+SELECT * FROM cte_name;
+</code></pre>
+        <ul>
+          <li>组织架构、目录树、图遍历、层级路径/深度计算等</li>
+        </ul>
+      </article>
+
+      <article class="card anchor" id="s12">
+        <h2>12）DML：INSERT...SELECT / UPDATE...FROM / UPSERT</h2>
+        <div class="two-col">
+          <div>
+            <h3>INSERT ... SELECT</h3>
+            <pre><code>INSERT INTO table(col1, col2)
+SELECT col1, col2
+FROM another_table
+WHERE condition;</code></pre>
+          </div>
+          <div>
+            <h3>UPDATE ... FROM（联表更新）</h3>
+            <pre><code>UPDATE a
+SET val = b.val
+FROM b
+WHERE a.id = b.id;</code></pre>
+          </div>
+        </div>
+        <h3>UPSERT（ON CONFLICT）</h3>
+        <pre><code>ON CONFLICT ... DO NOTHING  -- 有冲突就跳过
+ON CONFLICT ... DO UPDATE   -- 有冲突就更新（EXCLUDED）</code></pre>
+      </article>
+
+      <article class="card anchor" id="s13">
+        <h2>13）事务</h2>
+        <pre><code>BEGIN;   -- BEGIN WORK; / BEGIN TRANSACTION;
+  -- DML ...
+COMMIT;  -- COMMIT WORK; / COMMIT TRANSACTION;
+-- 或者
+ROLLBACK;  -- ROLLBACK WORK; / ROLLBACK TRANSACTION;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s14">
+        <h2>14）创建数据库与对象大小</h2>
+        <h3>创建数据库</h3>
+        <pre><code>CREATE DATABASE db_name
+  OWNER = role_name
+  ENCODING = 'UTF8'
+  LC_COLLATE = 'C'
+  LC_CTYPE = 'C'
+  TABLESPACE = pg_default
+  CONNECTION LIMIT = -1;
+</code></pre>
+        <h3>对象大小</h3>
+        <pre><code>SELECT pg_size_pretty(pg_relation_size('table_name'));         -- 表
+SELECT pg_size_pretty(pg_total_relation_size('table_name'));   -- 表(含索引/TOAST)
+SELECT pg_size_pretty(pg_database_size(current_database()));    -- 库
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s15">
+        <h2>15）创建表、列/表级约束（PK/FK/UNIQUE/CHECK/NOT NULL）</h2>
+        <h3>CREATE TABLE（语法骨架）</h3>
+        <pre><code>CREATE TABLE 表名 (
+  列名 数据类型 [列的约束],
+  [表的约束]
+)
+INHERITS (已有的表名);  -- 可选：继承
+</code></pre>
+        <h3>列级约束示例</h3>
+        <pre><code>name TEXT NOT NULL
+email TEXT UNIQUE
+age INTEGER CHECK (age &gt;= 18)
+id SERIAL PRIMARY KEY
+</code></pre>
+        <h3>表级约束示例</h3>
+        <pre><code>PRIMARY KEY (id, dept_id)          -- 复合主键
+UNIQUE (email, phone)              -- 复合唯一
+CHECK (start_date &lt; end_date)      -- 跨列检查
+FOREIGN KEY (user_id) REFERENCES users(id)</code></pre>
+
+        <h3 id="s15-pk">PRIMARY KEY（主键）</h3>
+        <pre><code>-- 方式 1：单列主键（字段后直接写）
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  name TEXT
+);
+
+-- 方式 2：显式命名（推荐）
+CREATE TABLE users (
+  id INTEGER,
+  name TEXT,
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+);
+
+-- 方式 3：联合主键
+CREATE TABLE order_items (
+  order_id INTEGER,
+  item_id  INTEGER,
+  CONSTRAINT order_items_pkey PRIMARY KEY (order_id, item_id)
+);
+
+-- 方式 4/5：ALTER TABLE 添加主键 / 添加带 SERIAL 的主键列
+ALTER TABLE users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+</code></pre>
+        <p class="meta">注意：主键列不可为 NULL；添加前需确保数据无重复/NULL；删除主键用 <code>ALTER TABLE ... DROP CONSTRAINT</code>。</p>
+
+        <h3 id="s15-fk">FOREIGN KEY（外键）</h3>
+        <pre><code>-- CREATE TABLE 内定义（命名版）
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER,
+  CONSTRAINT orders_user_fk FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
+-- 字段后简写（不命名）
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id)
+);
+
+-- 已有表添加外键（推荐显式命名）
+ALTER TABLE orders
+ADD CONSTRAINT orders_user_fk FOREIGN KEY (user_id) REFERENCES users(id);
+</code></pre>
+        <p class="meta">ON DELETE/UPDATE：CASCADE / SET NULL / RESTRICT / NO ACTION 等。</p>
+
+        <h3 id="s15-uniq">UNIQUE（唯一约束）</h3>
+        <pre><code>-- 列级唯一
+email TEXT UNIQUE
+
+-- 表级唯一（命名）
+CONSTRAINT unique_email UNIQUE (email)
+
+-- 复合唯一
+CONSTRAINT unique_user_email UNIQUE (user_id, email_type)</code></pre>
+        <p class="meta">唯一约束允许多个 <code>NULL</code>；自动创建唯一索引。</p>
+
+        <h3 id="s15-check">CHECK（检查约束）</h3>
+        <pre><code>age INTEGER CHECK (age BETWEEN 18 AND 65)
+salary NUMERIC CHECK (salary &gt; 0)
+CHECK (start_date &lt; end_date)
+-- 处理 NULL：CHECK (age IS NULL OR age &gt;= 18)</code></pre>
+
+        <h3 id="s15-notnull">NOT NULL（非空）</h3>
+        <pre><code>-- 创建时定义
+name TEXT NOT NULL
+
+-- 已有表添加/取消
+ALTER TABLE users ALTER COLUMN name SET NOT NULL;
+ALTER TABLE users ALTER COLUMN name DROP NOT NULL;</code></pre>
+      </article>
+
+      <article class="card anchor" id="s16">
+        <h2>16）SELECT INTO / CREATE TABLE AS</h2>
+        <pre><code>-- 直接用查询结果建表
+SELECT * INTO backup_users
+FROM users
+WHERE is_active = true;
+
+-- 推荐标准写法（更可控）
+CREATE TABLE backup_users AS
+SELECT * FROM users WHERE is_active = true;</code></pre>
+        <p class="meta"><code>SELECT INTO</code> 只能创建新表；插入已有表请用 <code>INSERT INTO ... SELECT ...</code>。</p>
+      </article>
+
+      <article class="card anchor" id="s17">
+        <h2>17）自增：SERIAL / SEQUENCE / IDENTITY（含管理）</h2>
+        <div class="two-col">
+          <div>
+            <h3>SERIAL（三种）</h3>
+            <ul>
+              <li><code>SMALLSERIAL</code> → <code>smallint</code></li>
+              <li><code>SERIAL</code> → <code>integer</code></li>
+              <li><code>BIGSERIAL</code> → <code>bigint</code></li>
+            </ul>
+            <p class="meta">默认起始值：1；SERIAL 是快捷方式，会创建序列并设默认值。</p>
+          </div>
+          <div>
+            <h3>IDENTITY（SQL 标准，推荐）</h3>
+            <pre><code>id INTEGER GENERATED ALWAYS AS IDENTITY
+-- 或：BY DEFAULT AS IDENTITY
+-- 可选项：START WITH / INCREMENT BY / MINVALUE / MAXVALUE / CYCLE / CACHE</code></pre>
+          </div>
+        </div>
+        <h3>序列（SEQUENCE）</h3>
+        <pre><code>CREATE SEQUENCE mysequence INCREMENT 5 START 100;
+-- OWNED BY：绑定到表列，删除列/表时自动删除序列
+SELECT nextval('mysequence');  -- 100, 105, ...
+-- 查询所有序列名
+SELECT c.relname AS sequence_name FROM pg_class c WHERE c.relkind = 'S';
+-- 删除序列
+DROP SEQUENCE IF EXISTS mysequence CASCADE;</code></pre>
+        <h3>为已有列添加/修改/删除 IDENTITY</h3>
+        <pre><code>ALTER TABLE t ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY;
+ALTER TABLE t ALTER COLUMN id SET GENERATED BY DEFAULT;
+ALTER TABLE t ALTER COLUMN id SET (START WITH 1000, INCREMENT BY 10);
+ALTER TABLE t ALTER COLUMN id DROP IDENTITY;</code></pre>
+      </article>
+
+      <article class="card anchor" id="s18">
+        <h2>18）ALTER TABLE / DROP TABLE</h2>
+        <pre><code>-- 多操作合并
+ALTER TABLE users
+  ADD COLUMN email TEXT,
+  DROP COLUMN temp_data,
+  RENAME COLUMN full_name TO name;
+
+-- 删除表
+DROP TABLE users;
+DROP TABLE orders, products;
+DROP TABLE IF EXISTS temp_data;   -- 安全删除
+DROP TABLE orders CASCADE;        -- 连同依赖</code></pre>
+      </article>
+
+      <article class="card anchor" id="s19">
+        <h2>19）案例：按日统计售卖率（PostgreSQL 版）</h2>
+        <pre><code>SELECT
+  DATE '2021-10-01' AS dt,
+  ROUND( COUNT(DISTINCT CASE WHEN (t3.event_time::date BETWEEN DATE '2021-09-25' AND DATE '2021-10-01') THEN t2.product_id END)
+        / NULLIF(COUNT(DISTINCT t1.product_id)::numeric, 0), 3) AS sale_rate,
+  1 - ROUND( COUNT(DISTINCT CASE WHEN (t3.event_time::date BETWEEN DATE '2021-09-25' AND DATE '2021-10-01') THEN t2.product_id END)
+        / NULLIF(COUNT(DISTINCT t1.product_id)::numeric, 0), 3) AS unsale_rate
+FROM tb_product_info t1
+LEFT JOIN tb_order_detail  t2 ON t1.product_id = t2.product_id
+LEFT JOIN tb_order_overall t3 ON t2.order_id   = t3.order_id
+WHERE shop_id = 901
+
+UNION ALL
+
+SELECT
+  DATE '2021-10-02',
+  ROUND( COUNT(DISTINCT CASE WHEN (t3.event_time::date BETWEEN DATE '2021-09-26' AND DATE '2021-10-02') THEN t2.product_id END)
+        / NULLIF(COUNT(DISTINCT t1.product_id)::numeric, 0), 3),
+  1 - ROUND( COUNT(DISTINCT CASE WHEN (t3.event_time::date BETWEEN DATE '2021-09-26' AND DATE '2021-10-02') THEN t2.product_id END)
+        / NULLIF(COUNT(DISTINCT t1.product_id)::numeric, 0), 3)
+FROM tb_product_info t1
+LEFT JOIN tb_order_detail  t2 ON t1.product_id = t2.product_id
+LEFT JOIN tb_order_overall t3 ON t2.order_id   = t3.order_id
+WHERE shop_id = 901
+
+UNION ALL
+
+SELECT
+  DATE '2021-10-03',
+  ROUND( COUNT(DISTINCT CASE WHEN (t3.event_time::date BETWEEN DATE '2021-09-27' AND DATE '2021-10-03') THEN t2.product_id END)
+        / NULLIF(COUNT(DISTINCT t1.product_id)::numeric, 0), 3),
+  1 - ROUND( COUNT(DISTINCT CASE WHEN (t3.event_time::date BETWEEN DATE '2021-09-27' AND DATE '2021-10-03') THEN t2.product_id END)
+        / NULLIF(COUNT(DISTINCT t1.product_id)::numeric, 0), 3)
+FROM tb_product_info t1
+LEFT JOIN tb_order_detail  t2 ON t1.product_id = t2.product_id
+LEFT JOIN tb_order_overall t3 ON t2.order_id   = t3.order_id
+WHERE shop_id = 901
+ORDER BY 1;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s20">
+        <h2>20）DISTINCT ON（每组取一行）</h2>
+        <pre><code>-- 取每个 user_id 的最新一条记录
+SELECT DISTINCT ON (user_id) *
+FROM logs
+ORDER BY user_id, created_at DESC;
+</code></pre>
+        <p class="meta">必须结合合适的 <code>ORDER BY</code> 确定每组保留行。</p>
+      </article>
+
+      <article class="card anchor" id="s21">
+        <h2>21）分页：LIMIT/OFFSET 与锚点翻页</h2>
+        <pre><code>-- 传统分页（大偏移性能差）
+SELECT ... ORDER BY id LIMIT 20 OFFSET 2000;
+
+-- 锚点式（更高效，基于上次最后一条的 id）
+SELECT ... WHERE id &gt; :last_id ORDER BY id LIMIT 20;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s22">
+        <h2>22）布尔数据类型（BOOLEAN）</h2>
+        <pre><code>CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  is_active BOOLEAN
+);
+
+-- 合法写法
+INSERT INTO users(is_active) VALUES (TRUE);
+INSERT INTO users(is_active) VALUES ('t');
+INSERT INTO users(is_active) VALUES (FALSE);
+
+-- 查询
+SELECT * FROM users WHERE is_active;        -- 等价于 is_active = TRUE
+</code></pre>
+        <p class="meta">布尔值等价写法：<code>true/t/yes/y/1</code> 与 <code>false/f/no/n/0</code>；<code>NULL</code> 表示未知。</p>
+      </article>
+
+      <article class="card anchor" id="s23">
+        <h2>23）字符数据类型</h2>
+        <h3>主要类型</h3>
+        <ul>
+          <li><b>TEXT</b>：不限制长度，推荐</li>
+          <li><b>VARCHAR(n)</b>：最大长度为 n，超长插入失败</li>
+          <li><b>CHAR(n)</b>：定长，不足补空格（很少使用）</li>
+        </ul>
+        <pre><code>CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(30),
+  full_name TEXT,
+  gender CHAR(1)
+);
+
+INSERT INTO users (username, full_name, gender)
+VALUES ('alice', 'Alice Wonderland', 'F');
+</code></pre>
+        <h3>常用函数</h3>
+        <pre><code>LENGTH(str) / char_length(str)
+TRIM(str) / LOWER(str) / UPPER(str)
+SUBSTRING(str FROM x FOR y)
+CONCAT(a, b)
+-- 不区分大小写匹配：ILIKE</code></pre>
+      </article>
+
+      <article class="card anchor" id="s24">
+        <h2>24）数值类型总览与函数</h2>
+        <h3>整数</h3>
+        <ul>
+          <li><code>SMALLINT</code> / <code>INTEGER</code> / <code>BIGINT</code></li>
+        </ul>
+        <h3>浮点</h3>
+        <ul>
+          <li><code>REAL</code>（约 6 位），<code>DOUBLE PRECISION</code>（约 15 位）</li>
+        </ul>
+        <h3>定点/高精度</h3>
+        <ul>
+          <li><code>NUMERIC(p, s)</code> / <code>DECIMAL(p, s)</code>（别名）— 金额推荐</li>
+        </ul>
+        <h3>常用函数/转换</h3>
+        <pre><code>ROUND(n, d), CEIL(n), FLOOR(n), ABS(n), POWER(x,y), MOD(x,y)
+CAST(... AS type), '123'::INTEGER</code></pre>
+        <p class="meta">金融金额类请用 <code>NUMERIC</code>，避免浮点误差。</p>
+      </article>
+
+      <article class="card anchor" id="s25">
+        <h2>25）整数类型与 SERIAL（强化）</h2>
+        <pre><code>CREATE TABLE numbers (
+  small_number SMALLINT,
+  normal_number INTEGER,
+  big_number BIGINT
+);
+
+-- 自增（伪类型）
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  name TEXT
+);
+</code></pre>
+        <p class="meta">选择建议：小范围 <code>SMALLINT</code>、常用 <code>INTEGER</code>、极大范围 <code>BIGINT</code>。</p>
+      </article>
+
+      <article class="card anchor" id="s26">
+        <h2>26）日期与时间数据类型（总览）</h2>
+        <ul>
+          <li><code>DATE</code>、<code>TIME</code>、<code>TIME WITH TIME ZONE</code></li>
+          <li><code>TIMESTAMP</code>、<code>TIMESTAMPTZ</code>（带时区）</li>
+          <li><code>INTERVAL</code>（时间间隔）</li>
+        </ul>
+        <pre><code>CREATE TABLE events (
+  id SERIAL PRIMARY KEY,
+  title TEXT,
+  event_date DATE,
+  start_time TIME,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 常用
+SELECT CURRENT_DATE, CURRENT_TIME, CURRENT_TIMESTAMP, NOW();
+SELECT NOW() + INTERVAL '3 days';
+
+-- 格式化
+SELECT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS');
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s27">
+        <h2>27）两种时间戳：TIMESTAMP vs TIMESTAMPTZ</h2>
+        <pre><code>-- TIMESTAMP：不含时区，原样存储；适合本地事件
+-- TIMESTAMPTZ：含时区，UTC 存储、显示按会话时区；适合日志/跨区
+
+SHOW TIME ZONE;
+SET TIME ZONE 'Asia/Shanghai';
+
+-- 示例对比（假设系统时区 UTC+8）
+-- t1: TIMESTAMP
+INSERT INTO t1 (created_at) VALUES ('2025-09-02 14:00:00');  -- 存/显均 14:00:00
+
+-- t2: TIMESTAMPTZ
+INSERT INTO t2 (created_at) VALUES ('2025-09-02 14:00:00+08');
+-- 实际以 UTC 存 06:00:00，显示为 14:00:00+08
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s28">
+        <h2>28）INTERVAL（时间间隔）</h2>
+        <pre><code>INTERVAL '1 year 2 months 3 days'
+INTERVAL '4 hours 30 minutes'
+
+CREATE TABLE events (
+  id SERIAL PRIMARY KEY,
+  event_name TEXT NOT NULL,
+  duration INTERVAL NOT NULL
+);
+
+SELECT NOW() + INTERVAL '1 day';
+SELECT NOW() - INTERVAL '2 hours';</code></pre>
+      </article>
+
+      <article class="card anchor" id="s29">
+        <h2>29）UUID</h2>
+        <pre><code>CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  username TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE
+);
+
+-- 生成函数：uuid_generate_v1(), uuid_generate_v4(), pgcrypto: gen_random_uuid()
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s30">
+        <h2>30）数组类型</h2>
+        <pre><code>CREATE TABLE example (
+  id SERIAL PRIMARY KEY,
+  tags   TEXT[],
+  scores INTEGER[]
+);
+
+INSERT INTO example (tags, scores) VALUES
+('{red,green,blue}', '{100,90,80}');
+
+-- 访问与函数
+SELECT tags[1] FROM example;
+SELECT array_length(scores, 1) FROM example;
+SELECT unnest(tags) FROM example;
+
+-- 更新元素
+UPDATE example SET tags[2] = 'yellow' WHERE id = 1;</code></pre>
+      </article>
+
+      <article class="card anchor" id="s31">
+        <h2>31）JSON / JSONB</h2>
+        <pre><code>CREATE TABLE documents (
+  id SERIAL PRIMARY KEY,
+  data JSONB NOT NULL
+);
+
+INSERT INTO documents (data)
+VALUES ('{"name": "Alice", "age": 30, "skills": ["SQL", "Python"]}');
+
+-- 提取
+SELECT data->>'name' AS name FROM documents;   -- 文本
+SELECT data->'skills' AS skills FROM documents;-- JSON
+
+-- 查询包含
+SELECT * FROM documents WHERE data @> '{"age": 30}';
+
+-- 更新
+UPDATE documents
+SET data = jsonb_set(data, '{age}', '31', false)
+WHERE id = 1;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s32">
+        <h2>32）从 JSON 提取数值并聚合</h2>
+        <pre><code>SELECT
+  MIN((info->'items'->>'qty')::INTEGER),
+  MAX((info->'items'->>'qty')::INTEGER),
+  SUM((info->'items'->>'qty')::INTEGER),
+  AVG((info->'items'->>'qty')::INTEGER)
+FROM orders;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s33">
+        <h2>33）Schema 管理</h2>
+        <pre><code>-- PostgreSQL 不支持直接重命名 Schema
+-- 实现“改名”：新建 + 迁移对象 + 删除旧的
+CREATE SCHEMA new_schema_name;
+
+ALTER TABLE old_schema.table_name SET SCHEMA new_schema_name;
+
+DROP SCHEMA old_schema_name [CASCADE | RESTRICT];
+
+ALTER SCHEMA schema_name OWNER TO new_owner;
+
+SET search_path TO schema1, schema2, public;</code></pre>
+      </article>
+
+      <article class="card anchor" id="s34">
+        <h2>34）COALESCE 笔记</h2>
+        <pre><code>-- 简介
+-- COALESCE(expr1, expr2, ..., exprN) 返回参数中第一个非 NULL 的值；
+-- 常用于为可能为 NULL 的字段设置默认值；
+-- 相当于：如果 A 是 NULL 就用 B，否则用 A。
+
+-- 基本语法
+COALESCE(value1, value2, ..., valueN)
+
+-- 使用示例
+-- 1. 字段为空时显示默认值
+SELECT COALESCE(nickname, '无昵称') AS display_name
+FROM users;
+
+-- 等价：CASE
+SELECT
+  CASE
+    WHEN nickname IS NOT NULL THEN nickname
+    ELSE '无昵称'
+  END AS display_name
+FROM users;
+
+-- 2. 多字段择一显示（昵称优先，用户名次之）
+SELECT COALESCE(nickname, username, '匿名用户') AS display_name
+FROM users;
+
+-- 3. 聚合时处理 NULL，防止结果为 NULL
+SELECT COALESCE(SUM(score), 0) AS total_score
+FROM users;
+
+-- 4. 搭配 NULLIF 使用，替换指定无效值（如 0）为 NULL
+SELECT COALESCE(NULLIF(age, 0), 18) AS valid_age
+FROM users;
+
+-- 注意事项
+-- - 可传入多个参数，按顺序返回第一个非 NULL；
+-- - 返回类型为所有参数中数据类型“优先级最高”的类型；
+-- - 一旦遇到非 NULL 值，后续参数不再评估（短路机制）；
+-- - 可与 NULLIF 结合使用，逻辑更灵活。
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s35">
+        <h2>35）NULLIF 函数笔记</h2>
+        <pre><code>-- 简介
+-- NULLIF(expr1, expr2) 如果 expr1 = expr2，则返回 NULL；否则返回 expr1；
+-- 常用于避免除以零错误、与 COALESCE 搭配处理特殊值等。
+
+-- 基本语法
+NULLIF(value1, value2)
+
+-- 使用示例
+-- 1. 避免除以零错误
+SELECT total / NULLIF(count, 0) AS avg_value
+FROM stats;
+
+-- 2. 与 COALESCE 结合使用：把 0 当作 NULL 处理
+SELECT COALESCE(NULLIF(age, 0), 18) AS valid_age
+FROM users;
+
+-- 3. 判断两个字段值是否相同
+SELECT NULLIF(email, backup_email) AS email_if_different
+FROM users;
+
+-- 典型应用
+-- 1) 处理非法值（如 0、空字符串）：NULLIF(some_field, 0) → 方便后续 COALESCE
+-- 2) 避免运算错误（除以 0）
+-- 3) 简化 CASE 判断
+-- 注意：若两参数任一为 NULL，则不会返回 NULL，需注意判断逻辑。
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s36">
+        <h2>36）CAST 笔记</h2>
+        <pre><code>-- 用途：将一种数据类型转换成另一种
+CAST ( expression AS target_data_type )
+
+-- 示例
+SELECT CAST('123' AS INTEGER);
+SELECT CAST(123 AS TEXT);
+SELECT CAST('2025-09-05' AS DATE);
+
+-- 简写
+expression::target_data_type
+SELECT '123'::INTEGER;
+SELECT 123::TEXT;
+
+-- 注意
+-- - 转换失败会抛错，例如 'abc'::INTEGER
+-- - 有些转换自动发生（整型↔浮点）
+-- 场景：类型不匹配、算术前转换、格式化输出
+
+SELECT
+  id,
+  price::TEXT AS price_text,
+  CAST(created_at AS DATE) AS created_date
+FROM products;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s37">
+        <h2>37）CASE 表达式简化笔记</h2>
+        <pre><code>CASE expression
+  WHEN value_1 THEN result_1
+  WHEN value_2 THEN result_2
+  ...
+  ELSE result_n
+END
+
+-- 示例
+SELECT
+  CASE status
+    WHEN 'A' THEN 'Active'
+    WHEN 'I' THEN 'Inactive'
+    ELSE 'Unknown'
+  END AS status_desc
+FROM users;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s38">
+        <h2>38）删除重复数据（DELETE USING 自连接）</h2>
+        <pre><code>DELETE
+FROM basket a
+USING basket b
+WHERE
+  a.id &lt; b.id            -- 保留 id 较小的
+  AND a.fruit = b.fruit; -- 重复判定条件
+</code></pre>
+        <p class="meta">说明：利用自连接删除重复；条件按业务自定义。</p>
+      </article>
+
+      <article class="card anchor" id="s39">
+        <h2>39）RANDOM() 产生范围随机数</h2>
+        <pre><code>-- RANDOM() 返回 [0,1) 浮点
+
+-- [min, max) 浮点
+SELECT RANDOM() * (max - min) + min;
+
+-- [min, max] 整数
+SELECT FLOOR(RANDOM() * (max - min + 1)) + min;
+
+-- 示例
+SELECT RANDOM() * (20 - 10) + 10;
+SELECT FLOOR(RANDOM() * 100) + 1;
+</code></pre>
+        <p class="meta">需要整数可使用 <code>FLOOR</code> 或显式转换。</p>
+      </article>
+
+      <article class="card anchor" id="s40">
+        <h2>40）EXPLAIN 语法笔记</h2>
+        <pre><code>EXPLAIN [(option [, ...])] sql_statement;
+
+-- 选项
+ANALYZE [boolean]
+VERBOSE [boolean]
+COSTS [boolean]     -- 默认 true
+BUFFERS [boolean]
+TIMING [boolean]
+SUMMARY [boolean]
+FORMAT [TEXT|XML|JSON|YAML] -- 默认 TEXT
+
+-- 示例
+EXPLAIN ANALYZE VERBOSE SELECT * FROM users WHERE age &gt; 30;
+
+-- 输出常见内容：节点类型（Seq Scan/Index Scan）、估计行数/成本、过滤条件、
+-- 实际执行时间（ANALYZE）、缓冲区（BUFFERS）等。
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s41">
+        <h2>41）PostgreSQL 和 MySQL 对比笔记</h2>
+        <pre><code>1. 基本定位
+- PostgreSQL：开源对象-关系型数据库，强调标准、扩展性和复杂查询能力。
+- MySQL：开源关系型数据库，强调速度、简单与广泛应用。
+
+2. SQL 标准支持
+- PostgreSQL：支持更全面（窗口函数、CTE、子查询等）。
+- MySQL：旧版本支持较弱。
+
+3. 数据完整性
+- PostgreSQL：CHECK、外键、触发器、约束完善。
+- MySQL：依引擎差异明显。
+
+4. 并发控制
+- PostgreSQL：MVCC 更彻底。
+- MySQL：InnoDB 也支持 MVCC。
+
+5. JSON 支持
+- PostgreSQL：JSON/JSONB 强大。
+- MySQL：5.7 起支持 JSON，功能较弱。
+
+6. 扩展性
+- PostgreSQL：自定义函数、类型、索引丰富。
+- MySQL：相对较弱。
+
+7. 性能
+- PostgreSQL：复杂查询/OLAP 更优。
+- MySQL：高并发小查询更轻快。
+
+8. GIS 支持
+- PostgreSQL：PostGIS 功能强。
+- MySQL：较有限。
+
+9. 工具 & 社区
+- MySQL：生态成熟。
+- PostgreSQL：社区活跃，增长快。
+
+10. 应用场景
+- 选 PG：一致性强、复杂查询、多维分析。
+- 选 MySQL：中小型、Web、读多写少。
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s42">
+        <h2>42）EXCEPT 补充笔记</h2>
+        <pre><code>-- 基本语法：
+SELECT column1, column2, ...
+FROM table1
+EXCEPT
+SELECT column1, column2, ...
+FROM table2;
+
+-- 示例：找出 foo 表中存在但 bar 表中不存在的记录
+SELECT ID, name FROM foo
+EXCEPT
+SELECT ID, name FROM bar;
+
+-- 特点：
+-- 1) 默认去重；EXCEPT ALL 保留重复
+-- 2) 两个 SELECT 的列数、顺序、类型需一致
+-- 3) 常用于数据差异分析、同步校验
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s43">
+        <h2>43）PL/pgSQL：块结构笔记</h2>
+        <pre><code>[ &lt;&lt;label&gt;&gt; ]
+DECLARE
+    declarations;
+BEGIN
+    statements;
+END [label];
+
+-- 示例
+DO $$
+DECLARE
+  counter INTEGER := 0;
+BEGIN
+  FOR counter IN 1..5 LOOP
+    RAISE NOTICE 'Counter: %', counter;
+  END LOOP;
+END;
+$$;
+
+-- 说明：DECLARE 可选；BEGIN...END 必须；可嵌套；label 可用于流程控制；可带 EXCEPTION。
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s44">
+        <h2>44）PL/pgSQL：变量笔记</h2>
+        <pre><code>-- 声明
+DECLARE
+  var_name data_type [ := initial_value ];
+
+-- 示例
+DECLARE
+  user_id INTEGER := 1001;
+  user_name TEXT;
+  is_active BOOLEAN := TRUE;
+
+-- 使用与赋值
+BEGIN
+  user_name := 'Alice';
+  RAISE NOTICE '用户名：%', user_name;
+END;
+
+-- 特殊变量
+-- FOUND, SQLSTATE, SQLERRM
+
+-- 赋值方式
+total := price * quantity;
+SELECT name INTO user_name FROM users WHERE id = user_id;
+
+-- 完整 DO 块
+DO $$
+DECLARE
+  counter INTEGER := 1;
+  result  TEXT;
+BEGIN
+  WHILE counter &lt;= 3 LOOP
+    result := '当前值: ' || counter;
+    RAISE NOTICE '%', result;
+    counter := counter + 1;
+  END LOOP;
+END;
+$$;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s45">
+        <h2>45）PL/pgSQL：常量笔记</h2>
+        <pre><code>-- 声明
+DECLARE
+  constant_name CONSTANT data_type := value;
+
+-- 示例
+DECLARE
+  pi CONSTANT NUMERIC := 3.1415926535;
+  max_retry CONSTANT INTEGER := 5;
+
+-- 特点：必须初始化且不可更改；提升可读性与安全性；常用大写命名。
+-- 场景：固定配置、数学常量、系统级不变参数。
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s46">
+        <h2>46）创建存储过程/函数 笔记</h2>
+        <pre><code>-- 创建函数
+CREATE [OR REPLACE] FUNCTION function_name(parameter_list)
+RETURNS return_data_type AS $$
+BEGIN
+  -- 函数体
+  RETURN some_value;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 示例：
+CREATE OR REPLACE FUNCTION get_five()
+RETURNS INTEGER AS $$
+BEGIN
+  RETURN 5;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION add_numbers(a INTEGER, b INTEGER)
+RETURNS INTEGER AS $$
+BEGIN
+  RETURN a + b;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 存储过程（PG 11+）
+CREATE [OR REPLACE] PROCEDURE procedure_name(parameter_list)
+LANGUAGE plpgsql AS $$
+BEGIN
+  -- 不返回值，可做事务控制
+END;
+$$;
+
+-- 调用
+SELECT function_name(args);
+CALL procedure_name(args);
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s47">
+        <h2>47）函数的四种参数 笔记</h2>
+        <pre><code>-- 1. IN（默认）
+CREATE FUNCTION example_in(IN param1 INT)
+RETURNS VOID AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;
+
+-- 2. OUT
+CREATE FUNCTION example_out(OUT result INT)
+AS $$ BEGIN result := 100; END; $$ LANGUAGE plpgsql;
+
+-- 3. INOUT
+CREATE FUNCTION example_inout(INOUT param INT)
+AS $$ BEGIN param := param + 10; END; $$ LANGUAGE plpgsql;
+
+-- 4. VARIADIC（可变参=数组）
+CREATE FUNCTION example_variadic(VARIADIC nums INT[])
+RETURNS INT AS $$
+DECLARE total INT := 0; n INT;
+BEGIN
+  FOREACH n IN ARRAY nums LOOP
+    total := total + n;
+  END LOOP;
+  RETURN total;
+END;
+$$ LANGUAGE plpgsql;
+</code></pre>
+      </article>
+
+      <article class="card anchor" id="s48">
+        <h2>48）函数重载 笔记</h2>
+        <pre><code>-- 定义多个同名不同参数列表的函数
+CREATE FUNCTION add_value(a INT) RETURNS INT AS $$ BEGIN RETURN a + 10; END; $$ LANGUAGE plpgsql;
+CREATE FUNCTION add_value(a INT, b INT) RETURNS INT AS $$ BEGIN RETURN a + b; END; $$ LANGUAGE plpgsql;
+
+-- 调用
+SELECT add_value(5);      -- 15（单参版本）
+SELECT add_value(5, 3);   -- 8  （双参版本）
+
+-- 注意：区分依据是参数数量/类型；返回类型不同不能单独区分；
+-- 自动类型转换可能影响匹配到的重载版本。
+</code></pre>
+      </article>
+
+    </section>
+  </div>
+</body>
+</html>
