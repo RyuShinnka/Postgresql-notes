@@ -1784,7 +1784,1373 @@ WHERE relname = 'idx_users_email';
 </code></pre>
 </article>
 
-<!-- ……中间省略，直到 s76 -->
+<article class="card anchor" id="s57">
+  <h2>57）PostgreSQL（查看）列出索引的两种方式</h2>
+  <pre><code>一、方式一：使用 \d 命令（psql 命令行专用）
+
+-- 命令：
+\d table_name
+
+-- 示例：
+\d users
+
+-- 说明：
+-- - 会列出表的所有字段、索引、约束等信息；
+-- - 是 PostgreSQL 自带的元数据查看命令，需在 psql 终端中使用；
+-- - 不适用于图形界面工具或其他 SQL 客户端。
+
+-- 输出中索引部分示例：
+-- Indexes:
+--     "idx_users_email" btree (email)
+--     "users_pkey" PRIMARY KEY, btree (id)
+
+二、方式二：查询系统视图 pg_indexes（通用方式）
+
+-- 查询语法（基础版本）：
+SELECT
+    tablename,
+    indexname,
+    indexdef
+FROM pg_indexes
+WHERE tablename = 'your_table_name';
+
+-- 示例：
+SELECT
+    tablename,
+    indexname,
+    indexdef
+FROM pg_indexes
+WHERE tablename = 'users';
+
+-- 查询语法（增强版本：按表名模糊查询 + 排序）：
+SELECT
+    tablename,
+    indexname,
+    indexdef
+FROM pg_indexes
+WHERE tablename LIKE 'c%'     -- 可查找表名以 'c' 开头的所有索引
+ORDER BY
+    tablename,
+    indexname;
+
+-- 输出说明：
+-- - tablename ：表名；
+-- - indexname ：索引名称；
+-- - indexdef  ：索引定义语句；
+-- - 可结合 WHERE 过滤 + ORDER BY 排序 提高可读性；
+
+三、补充：查看索引使用情况（可选）
+
+-- 可通过 pg_stat_user_indexes 查看索引是否被使用过：
+
+SELECT
+    relname AS index_name,
+    idx_scan AS times_used
+FROM pg_stat_user_indexes
+WHERE relname LIKE 'idx_%';
+
+-- idx_scan = 0 表示该索引尚未被查询使用（可能是冗余索引）。</code></pre>
+</article>
+
+
+<article class="card anchor" id="s58">
+  <h2>58）PostgreSQL索引类型</h2>
+  <pre><code>一、常见索引类型及说明
+
+| 索引类型 | 说明 |
+|----------|------|
+| B-tree（默认） | 最常用，支持 =、<、<=、>、>=、BETWEEN 等操作； |
+| Hash     | 支持 = 操作，效率高，但不支持范围查询；适合等值查询； |
+| GIN（Generalized Inverted Index） | 适用于数组、JSONB、全文搜索字段等； |
+| GiST（Generalized Search Tree）   | 适用于空间数据、模糊搜索等场景； |
+| SP-GiST | 适合稀疏或层次结构数据，如IP、文本前缀等； |
+| BRIN（Block Range Index） | 适合大数据量且列值有顺序特征的表；占用空间小； |
+
+二、创建不同类型索引的语法
+
+-- 1. 默认 B-tree 索引（可以省略 USING btree）
+CREATE INDEX idx_users_email ON users(email);
+
+-- 2. Hash 索引
+CREATE INDEX idx_users_email_hash ON users USING hash(email);
+
+-- 3. GIN 索引（适合 JSONB 或数组）
+CREATE INDEX idx_docs_tags_gin ON documents USING gin(tags);
+
+-- 4. GIN 索引（适合全文搜索）
+CREATE INDEX idx_docs_content_gin ON documents USING gin(to_tsvector('english', content));
+
+-- 5. GiST 索引（模糊、空间）
+CREATE INDEX idx_shapes_gist ON shapes USING gist(geometry);
+
+-- 6. SP-GiST 索引（适合 trie、稀疏值等）
+CREATE INDEX idx_logs_ip_spgist ON logs USING spgist(ip_address);
+
+-- 7. BRIN 索引（大表、顺序列）
+CREATE INDEX idx_logs_time_brin ON logs USING brin(event_time);
+
+三、选择索引类型的建议
+
+- 默认使用 B-tree，适合绝大多数常规查询；
+- Hash 索引仅适合等值查询，其他操作不支持；
+- GIN/GiST 多用于特殊类型字段（数组、JSONB、全文检索）；
+- BRIN 适合时间序列、日志等“顺序写入”大表；
+- 空间/地理数据建议使用 GiST 索引；
+
+四、查看索引类型
+
+-- 查看表上的索引类型（使用 pg_indexes 和 pg_class）：
+SELECT
+    idx.indexname,
+    am.amname AS index_type
+FROM
+    pg_indexes idx
+JOIN
+    pg_class cls ON cls.relname = idx.indexname
+JOIN
+    pg_index i ON i.indexrelid = cls.oid
+JOIN
+    pg_am am ON am.oid = cls.relam
+WHERE
+    idx.tablename = 'your_table_name';
+
+-- 替换 'your_table_name' 为目标表名，例如 'users'；
+
+五、索引类型总结
+
+| 场景 | 推荐索引类型 |
+|------|----------------|
+| 等值查询             | B-tree / Hash        |
+| 范围查询             | B-tree               |
+| 数组 / JSONB 查询     | GIN                  |
+| 模糊搜索 / 空间查询   | GiST                 |
+| 时间序列 / 日志表     | BRIN                 |
+| 稀疏层级数据结构      | SP-GiST              |</code></pre>
+</article>
+
+
+<article class="card anchor" id="s59">
+  <h2>59）PostgreSQL 唯一索引</h2>
+  <pre><code>一、唯一索引简介
+
+- 唯一索引（UNIQUE INDEX）用于保证某列或列组合中的值不重复；
+- 可防止插入重复数据；
+- PostgreSQL 中主键（PRIMARY KEY）本质上也是一种唯一索引 + 非空约束。
+
+二、创建唯一索引语法
+
+-- 基本语法：
+CREATE UNIQUE INDEX index_name
+ON table_name (column1 [, column2, ...]);
+
+-- 示例：在 users 表的 email 字段上创建唯一索引
+CREATE UNIQUE INDEX idx_users_email_unique
+ON users (email);
+
+-- 示例：多个字段联合唯一
+CREATE UNIQUE INDEX idx_users_name_birth_unique
+ON users (first_name, birth_date);
+
+三、与 UNIQUE 约束的关系
+
+- UNIQUE 约束本质上会隐式创建唯一索引；
+- 两者的区别更多体现在语义与用途：
+  - **UNIQUE 约束**：用于表结构设计，表示业务规则；
+  - **UNIQUE INDEX**：更偏向于性能优化、索引管理层面；
+
+-- 示例（等价于上面）：
+ALTER TABLE users ADD CONSTRAINT unique_email UNIQUE (email);
+
+四、删除唯一索引
+
+-- 使用 DROP INDEX：
+DROP INDEX IF EXISTS idx_users_email_unique;
+
+-- 注意：不能删除由 UNIQUE 约束自动创建的索引，除非先删除约束：
+ALTER TABLE users DROP CONSTRAINT unique_email;
+
+五、唯一索引的注意事项
+
+- 唯一索引会拒绝插入或更新导致重复值的数据；
+- 可以创建**部分唯一索引**，仅对满足某条件的行唯一（见下一笔记）；
+- 字段中如果允许 NULL，可以插入多个 NULL（PostgreSQL 中 NULL 不等于 NULL）；
+
+六、查询表中有哪些唯一索引
+
+-- 查询当前库中所有唯一索引：
+SELECT
+    i.relname AS index_name,
+    t.relname AS table_name,
+    a.attname AS column_name
+FROM
+    pg_class t,
+    pg_class i,
+    pg_index ix,
+    pg_attribute a
+WHERE
+    t.oid = ix.indrelid
+    AND i.oid = ix.indexrelid
+    AND a.attrelid = t.oid
+    AND a.attnum = ANY(ix.indkey)
+    AND ix.indisunique = true
+    AND t.relkind = 'r'  -- 仅限普通表
+ORDER BY
+    t.relname, i.relname;</code></pre>
+</article>
+<article class="card anchor" id="s60">
+  <h2>60）PostgreSQL 基于表达式的索引</h2>
+  <pre><code>一、简介
+- 基于表达式的索引（Expression Index）是对某个表达式的结果建立索引，而非直接对列值建立索引；
+- 适用于对函数计算结果或复杂表达式进行索引，提高查询效率；
+- 例如：对字符串的某种处理结果、计算列、JSON字段的提取结果等。
+
+二、创建语法
+
+CREATE INDEX index_name
+ON table_name (expression);
+
+-- expression 可以是任意有效的 SQL 表达式，比如函数调用、算术计算等。
+
+三、示例
+
+-- 示例1：对字符串字段的大小写转换建立索引
+CREATE INDEX idx_users_lower_email
+ON users (LOWER(email));
+
+-- 查询时需使用相同表达式才能利用索引：
+SELECT * FROM users WHERE LOWER(email) = 'test@example.com';
+
+-- 示例2：对计算表达式建立索引，比如对价格取整
+CREATE INDEX idx_products_rounded_price
+ON products ((ROUND(price)));
+
+-- 查询时使用 ROUND(price) 即可利用该索引：
+SELECT * FROM products WHERE ROUND(price) = 100;
+
+-- 示例3：JSON字段的提取表达式索引
+CREATE INDEX idx_orders_customer_id
+ON orders ((data->>'customer_id'));
+
+-- 查询时需用相同表达式：
+SELECT * FROM orders WHERE data->>'customer_id' = '12345';
+
+四、注意事项
+- 表达式索引创建后，查询中必须使用与索引表达式完全一致的表达式，才能有效利用索引；
+- 支持多列表达式组合索引，如：
+  CREATE INDEX idx_example ON table_name ((expression1), (expression2));
+- 表达式索引可以是不可变函数，确保索引结果的稳定性；
+- 支持与 WHERE 子句结合，创建部分表达式索引（部分索引）；
+- 不支持直接使用 ALTER INDEX 修改表达式索引，需删除重建。
+
+五、删除表达式索引
+
+-- 删除表达式索引与普通索引相同：
+DROP INDEX IF EXISTS idx_users_lower_email;
+
+六、查看表达式索引信息
+
+-- 查询索引定义（包含表达式）：
+SELECT
+    indexname,
+    indexdef
+FROM
+    pg_indexes
+WHERE
+    tablename = 'users'
+    AND indexdef LIKE '%LOWER(email)%';</code></pre>
+</article>
+
+
+<article class="card anchor" id="s61">
+  <h2>61）PostgreSQL 局部索引（部分索引 Partial Index）</h2>
+  <pre><code>一、简介
+- 局部索引是只对表中满足特定条件的部分数据建立的索引；
+- 适用于数据集中存在明显过滤条件的场景，能节省空间，提高查询效率；
+- 例如，只对活跃用户、某状态的数据建立索引。
+
+二、创建语法
+
+CREATE INDEX index_name
+ON table_name (column_list)
+WHERE condition;
+
+- WHERE 子句限定了索引覆盖的行范围；
+- 只有满足 WHERE 条件的行会被索引。
+
+三、示例
+
+-- 示例1：只对活跃用户建立索引
+CREATE INDEX idx_users_active_email
+ON users (email)
+WHERE active = true;
+
+-- 查询示例，只有条件匹配时才用到局部索引
+SELECT * FROM users WHERE active = true AND email = 'test@example.com';
+
+-- 示例2：对订单表中未完成状态的数据建立索引
+CREATE INDEX idx_orders_pending_customer
+ON orders (customer_id)
+WHERE status = 'pending';
+
+四、使用注意
+- 查询中必须包含索引的 WHERE 条件，才能有效利用局部索引；
+- 适合频繁按某条件过滤查询的场景；
+- 局部索引减少了索引大小，提高写入性能；
+- 结合表达式索引，可以建立更灵活的索引。
+
+五、删除局部索引
+
+DROP INDEX IF EXISTS index_name;
+
+六、查看局部索引信息
+
+-- 查询索引定义，观察 WHERE 条件
+SELECT
+    indexname,
+    indexdef
+FROM
+    pg_indexes
+WHERE
+    tablename = 'users'
+    AND indexdef LIKE '%WHERE%';</code></pre>
+</article>
+
+
+<article class="card anchor" id="s62">
+  <h2>62）PostgreSQL重新索引</h2>
+  <pre><code>-- 一、语法
+REINDEX [ ( VERBOSE ) ] { INDEX | TABLE | SCHEMA | DATABASE | SYSTEM } name;
+
+-- 二、说明
+-- REINDEX：重建已存在的索引；
+-- 会加锁，期间不能读写被影响的索引；
+
+-- 锁类型对比：
+-- DROP INDEX：获取读锁和写锁；
+-- CREATE INDEX：获取写锁；
+-- REINDEX：排外锁（独占锁），影响较大，慎用在高并发场景。
+
+-- 三、示例
+REINDEX INDEX idx_users_email;
+REINDEX TABLE users;
+REINDEX DATABASE mydb;</code></pre>
+</article>
+
+
+<article class="card anchor" id="s63">
+  <h2>63）PostgreSQL 在多列上定义索引</h2>
+  <pre><code>一、简介
+- PostgreSQL 支持在多个列上创建组合索引（也称多列索引）；
+- 多列索引可提高多条件查询的效率，常用于联合过滤、排序等场景；
+- 注意多列索引的“**最左前缀原则**”对索引使用效果的影响。
+
+二、语法格式
+
+CREATE INDEX index_name
+ON table_name (column1, column2, ...);
+
+-- 可指定排序方式和空值处理：
+-- column_name [ASC | DESC] [NULLS FIRST | LAST]
+
+三、使用示例
+
+-- 示例1：在 first_name 和 last_name 上创建组合索引
+CREATE INDEX idx_users_name
+ON users (first_name, last_name);
+
+-- 示例2：指定排序规则
+CREATE INDEX idx_users_name_desc
+ON users (last_name DESC, first_name ASC);
+
+-- 示例3：带空值排序控制
+CREATE INDEX idx_orders_date_status
+ON orders (order_date NULLS LAST, status);
+
+四、最左前缀原则（重要）
+
+- 组合索引只有在查询条件中包含“从最左侧开始的连续列”时才会被使用；
+- 示例：
+  - ✅ 使用索引：`WHERE first_name = 'Tom'`  
+  - ✅ 使用索引：`WHERE first_name = 'Tom' AND last_name = 'Lee'`
+  - ❌ 不使用索引：`WHERE last_name = 'Lee'`（跳过了最左列）
+
+五、适用场景
+
+- 经常使用多个字段联合查询或排序的表；
+- 比如用户搜索、订单列表过滤等；
+- 注意字段顺序应根据查询频率和过滤条件设计。
+
+六、查看索引使用情况
+
+-- 查看表上有哪些索引
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'users';
+
+-- 查看实际查询是否使用了索引（EXPLAIN）
+EXPLAIN SELECT * FROM users WHERE first_name = 'Tom' AND last_name = 'Lee';</code></pre>
+</article>
+
+
+<article class="card anchor" id="s64">
+  <h2>64）PostgreSQL 视图的管理</h2>
+  <pre><code>一、什么是视图（View）
+- 视图是一个虚拟表，本质是存储的 SELECT 查询；
+- 不保存实际数据，每次查询时动态执行；
+- 用于简化复杂 SQL、封装逻辑、限制用户访问敏感字段等。
+
+二、创建视图
+
+-- 基本语法：
+CREATE [OR REPLACE] VIEW view_name AS
+SELECT ...
+FROM ...
+WHERE ...;
+
+-- 示例：创建一个仅显示活跃用户的视图
+CREATE VIEW active_users AS
+SELECT id, name, email
+FROM users
+WHERE is_active = true;
+
+-- 使用 OR REPLACE 更新视图结构
+CREATE OR REPLACE VIEW active_users AS
+SELECT id, name
+FROM users
+WHERE is_active = true;
+
+三、带列名创建视图
+
+-- 显式指定视图返回的列名
+CREATE VIEW user_emails (user_id, user_email) AS
+SELECT id, email FROM users;
+
+四、查询视图数据
+
+-- 与普通表一样
+SELECT * FROM active_users;
+
+五、查看视图定义
+
+-- 方法1：在 psql 中使用
+\d+ view_name
+
+-- 方法2：查询系统表
+SELECT definition
+FROM pg_views
+WHERE viewname = 'active_users';
+
+六、修改视图名称
+
+-- 修改视图名
+ALTER VIEW old_view_name RENAME TO new_view_name;
+
+-- 示例：
+ALTER VIEW customer_master RENAME TO customer_info;
+
+七、删除视图
+
+-- 删除视图的语法：
+DROP VIEW [IF EXISTS] view_name [CASCADE | RESTRICT];
+
+-- 示例：
+DROP VIEW IF EXISTS active_users;
+
+八、可更新视图的限制
+
+- 简单视图可以执行 INSERT、UPDATE、DELETE；
+  - 条件：基于单表，无聚合、无 DISTINCT、无 JOIN 等。
+- 示例：可更新视图
+UPDATE active_users SET name = 'Tom' WHERE id = 1;
+
+- 若视图较复杂，则需借助 INSTEAD OF 触发器实现更新（高级用法）。
+
+九、安全与权限控制
+
+- 可通过视图限制用户访问表的部分字段或部分数据；
+- 可对视图设置权限：
+  GRANT SELECT ON active_users TO read_only_user;
+
+十、WITH CHECK OPTION（视图插入限制）
+
+-- 语法：
+CREATE VIEW view_name AS
+SELECT ...
+WHERE ...
+WITH CHECK OPTION;
+
+-- 作用：确保通过视图插入/更新的数据仍满足视图的 WHERE 条件。
+
+-- 示例：
+CREATE VIEW active_users AS
+SELECT * FROM users
+WHERE is_active = true
+WITH CHECK OPTION;
+
+十一、视图 vs 表的对比（简要）
+
+| 项目       | 视图（VIEW）     | 表（TABLE）     |
+|------------|------------------|------------------|
+| 数据存储   | 不存储数据        | 存储实际数据     |
+| 更新能力   | 有条件支持        | 完全支持         |
+| 查询性能   | 实时执行          | 高效，依赖索引   |
+| 应用场景   | 简化查询、权限控制 | 存储结构化数据   |</code></pre>
+</article>
+
+
+<article class="card anchor" id="s65">
+  <h2>65）PostgreSQL 创建可更新的视图</h2>
+  <pre><code>一、可更新视图简介
+- 默认情况下，**简单视图** 是可更新的；
+- 所谓“可更新”是指：可以对视图执行 `INSERT`、`UPDATE`、`DELETE`；
+- 若视图基于的查询足够简单，PostgreSQL 能自动将更新操作映射到底层表。
+
+二、满足可更新条件的视图要求
+- 视图必须：
+  1. 只引用一个表；
+  2. 不包含聚合函数（如 SUM、AVG）；
+  3. 不包含 `DISTINCT`、`GROUP BY`、`HAVING` 等；
+  4. 不包含 `UNION`、`INTERSECT` 等集合操作；
+  5. 不包含子查询；
+  6. 不使用窗口函数；
+  7. 没有 `LIMIT` 或 `OFFSET`；
+  8. 所有非空字段必须在视图中可见。
+
+三、创建可更新视图的示例
+
+-- 假设我们有一张员工表：
+CREATE TABLE employees (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    department TEXT NOT NULL,
+    salary NUMERIC
+);
+
+-- 创建一个视图：只包含 IT 部门员工
+CREATE VIEW it_employees AS
+SELECT id, name, salary
+FROM employees
+WHERE department = 'IT';
+
+-- 这个视图是可更新的：
+UPDATE it_employees
+SET salary = salary + 500
+WHERE id = 1;
+
+-- 也支持插入：
+INSERT INTO it_employees (name, salary)
+VALUES ('Alice', 8000); -- 注意：会自动添加 department = 'IT'
+
+-- 但这样插入会失败（因为 department 字段视图中不可见，无法满足 NOT NULL）：
+-- INSERT INTO it_employees (id, name) VALUES (5, 'Bob');
+
+四、WITH CHECK OPTION：控制更新范围
+
+-- 防止用户插入/更新不满足 WHERE 条件的数据
+CREATE VIEW it_employees_strict AS
+SELECT id, name, salary
+FROM employees
+WHERE department = 'IT'
+WITH CHECK OPTION;
+
+-- 使用 WITH CHECK OPTION 后，这种操作会失败：
+UPDATE it_employees_strict
+SET department = 'HR'
+WHERE id = 1;
+
+-- 插入也必须满足 WHERE 条件，否则拒绝
+
+五、复杂视图不可更新怎么办？
+
+-- 如果视图复杂不可更新（如包含 JOIN），可以使用 INSTEAD OF 触发器（见高级用法）手动实现更新逻辑。
+
+六、总结
+
+| 是否可更新 | 特征说明                                 |
+|------------|------------------------------------------|
+| ✅ 可更新   | 简单查询、单表、无聚合等                 |
+| ❌ 不可更新 | 多表 JOIN、聚合、DISTINCT、GROUP BY 等   |
+| ✅ 条件更新 | 可加 WITH CHECK OPTION 限制更新条件       |、</code></pre>
+</article>
+<article class="card anchor" id="s66">
+  <h2>66）PostgreSQL物理化的视图</h2>
+  <pre><code>一、物理化视图简介
+- 物理化视图（Materialized View）是把查询结果物理存储起来的视图；
+- 与普通视图不同，物理化视图的数据是静态的，需要手动刷新才能同步底层表数据；
+- 适合查询开销大且不常变的数据缓存，提高查询性能。
+
+二、创建物理化视图
+
+CREATE MATERIALIZED VIEW view_name AS
+SELECT ...
+[WITH [NO] DATA];
+
+- WITH DATA（默认）表示创建时立即计算并存储数据；
+- WITH NO DATA 表示只创建视图结构，不填充数据，数据需后续刷新。
+
+三、刷新物理化视图数据
+
+REFRESH MATERIALIZED VIEW [CONCURRENTLY] view_name;
+
+- 直接刷新会锁住视图，阻塞查询；
+- 使用 CONCURRENTLY 可实现并发刷新，查询不受阻塞（需要视图有唯一索引）；
+
+四、删除物理化视图
+
+DROP MATERIALIZED VIEW view_name;
+
+五、示例演示
+
+-- 创建示例表
+CREATE TABLE sales (
+    id SERIAL PRIMARY KEY,
+    product TEXT,
+    amount INT,
+    sale_date DATE
+);
+
+-- 创建物理化视图，统计每天销售总额
+CREATE MATERIALIZED VIEW daily_sales AS
+SELECT sale_date, SUM(amount) AS total_amount
+FROM sales
+GROUP BY sale_date
+WITH DATA;
+
+-- 查询视图数据
+SELECT * FROM daily_sales;
+
+-- 新增数据后刷新物理化视图
+INSERT INTO sales (product, amount, sale_date) VALUES ('A', 10, '2025-09-16');
+REFRESH MATERIALIZED VIEW daily_sales;
+
+-- 并发刷新（不阻塞查询，视图需有唯一索引）
+CREATE UNIQUE INDEX daily_sales_date_idx ON daily_sales(sale_date);
+REFRESH MATERIALIZED VIEW CONCURRENTLY daily_sales;
+
+-- 删除物理化视图
+DROP MATERIALIZED VIEW daily_sales;
+
+六、总结
+
+| 特点                 | 说明                                  |
+|----------------------|-------------------------------------|
+| 数据存储              | 查询结果物理存储，提高查询速度         |
+| 数据更新              | 需要手动刷新，数据非实时                |
+| 创建选项              | 可选择 WITH DATA 或 WITH NO DATA       |
+| 并发刷新              | 支持 CONCURRENTLY 选项，避免锁表        |
+| 使用场景              | 大量复杂查询，数据更新不频繁的场景      |</code></pre>
+</article>
+
+
+<article class="card anchor" id="s67">
+  <h2>67）PostgreSQL 创建可更新视图使用 CHECK 选项</h2>
+  <pre><code>一、背景介绍
+- 默认情况下，简单视图是可更新的；
+- 但视图中的 WHERE 条件可能会导致插入或更新时数据不符合条件，影响数据完整性；
+- PostgreSQL 提供 `WITH CHECK OPTION` 来保证插入或更新的数据满足视图的条件。
+
+二、WITH CHECK OPTION 作用
+- 约束用户通过视图插入或更新的数据必须满足视图定义中的 WHERE 条件；
+- 防止不符合条件的数据被写入底层表，保证视图数据的一致性和有效性。
+
+三、使用方法
+
+CREATE VIEW view_name AS
+SELECT ...
+FROM table_name
+WHERE 条件
+WITH CHECK OPTION;
+
+- `WITH CHECK OPTION` 放在视图定义的最后；
+- 插入或更新不满足 WHERE 条件的数据会报错，操作失败。
+
+四、示例演示
+
+-- 创建基础表
+CREATE TABLE employees (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    department TEXT NOT NULL,
+    salary NUMERIC
+);
+
+-- 创建一个只包含 IT 部门员工的视图，带 CHECK OPTION
+CREATE VIEW it_employees AS
+SELECT id, name, salary
+FROM employees
+WHERE department = 'IT'
+WITH CHECK OPTION;
+
+-- 通过视图插入符合条件的数据，成功
+INSERT INTO it_employees (name, salary)
+VALUES ('Alice', 8000);
+
+-- 通过视图插入不符合条件的数据，失败
+-- INSERT INTO it_employees (name, salary) VALUES ('Bob', 7000);
+-- 报错：违反 WITH CHECK OPTION 约束，因为 department='IT' 条件不满足
+
+-- 通过视图更新操作，也必须满足条件
+UPDATE it_employees
+SET salary = salary + 500
+WHERE id = 1;
+
+-- 更新为不满足条件，会失败
+-- UPDATE it_employees
+-- SET department = 'HR'
+-- WHERE id = 1;
+
+五、小结
+
+| 特性              | 说明                                      |
+|-------------------|-----------------------------------------|
+| 数据完整性保障    | 保障视图上的插入/更新符合 WHERE 条件      |
+| 操作限制          | 插入或更新不满足条件的数据操作会失败       |
+| 适用场景          | 需要保证视图中数据符合特定业务规则的情况    |</code></pre>
+</article>
+
+
+<article class="card anchor" id="s68">
+  <h2>68）PostgreSQL 触发器介绍</h2>
+  <pre><code>一、触发器简介
+- 触发器（Trigger）是数据库对象，在特定事件发生时自动执行预定义的函数；
+- 常用于实现自动化业务逻辑、数据校验、审计日志等；
+- 触发器可以在表的 `INSERT`、`UPDATE`、`DELETE` 操作前或后触发。
+
+二、触发器的组成
+1. 触发事件（Trigger Event）：INSERT、UPDATE、DELETE；
+2. 触发时机（Trigger Timing）：BEFORE（之前）、AFTER（之后）、INSTEAD OF（视图触发器）；
+3. 触发函数（Trigger Function）：用 PL/pgSQL 或其他语言编写，执行具体操作。
+
+三、触发器的作用场景
+- 自动维护统计数据或派生数据；
+- 实现复杂的业务规则和校验；
+- 审计用户操作，记录变更历史；
+- 维护数据完整性，补充约束逻辑；
+- 支持视图的可更新操作（INSTEAD OF 触发器）。
+
+四、触发器分类
+
+| 触发时机        | 说明                             |
+|-----------------|----------------------------------|
+| BEFORE          | 在操作执行前触发，能修改数据     |
+| AFTER           | 在操作执行后触发，通常用于日志等 |
+| INSTEAD OF      | 视图专用，替代操作执行           |
+
+五、注意事项
+- 触发器执行后不能直接返回 NULL（BEFORE 触发器必须返回 NEW 或 OLD）；
+- 触发器执行影响性能，慎用；
+- 复杂业务尽量写在触发函数内，保持触发器简洁。
+
+六、小结
+
+| 关键点       | 说明                                  |
+|--------------|---------------------------------------|
+| 触发时机     | BEFORE、AFTER、INSTEAD OF             |
+| 触发事件     | INSERT、UPDATE、DELETE                 |
+| 触发函数     | 用 PL/pgSQL 编写，执行具体逻辑         |
+| 应用场景     | 数据校验、审计、自动更新、视图更新支持 |</code></pre>
+</article>
+
+
+<article class="card anchor" id="s69">
+  <h2>69）PostgreSQL 触发器的创建</h2>
+  <pre><code>/*
+一、触发器简介
+- 触发器是数据库对象，能在特定事件发生时自动执行预定义的函数。
+- 事件包括：INSERT、UPDATE、DELETE。
+- 用于自动化任务、数据验证、审计等。
+
+二、触发器函数（Trigger Function）
+- 必须是无参数、返回触发器类型的函数。
+- 通常用 PL/pgSQL 编写。
+
+示例：
+CREATE OR REPLACE FUNCTION trigger_function_name()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- 触发器逻辑
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+三、创建触发器语法
+
+CREATE TRIGGER trigger_name
+    { BEFORE | AFTER | INSTEAD OF } { event [ OR ... ] }
+    ON table_name
+    [ FOR [ EACH ] { ROW | STATEMENT } ]
+    EXECUTE PROCEDURE trigger_function();
+
+说明：
+- trigger_name：触发器名称。
+- BEFORE / AFTER / INSTEAD OF：触发器时机。
+- event：事件类型，如 INSERT、UPDATE、DELETE。
+- table_name：绑定的表或视图。
+- FOR EACH ROW：对每行执行一次。
+- FOR EACH STATEMENT：对整个语句执行一次。
+
+四、示例
+
+-- 创建一个触发器函数，更新某列时间戳
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 创建 BEFORE UPDATE 触发器
+CREATE TRIGGER set_timestamp
+BEFORE UPDATE ON employees
+FOR EACH ROW
+EXECUTE PROCEDURE update_timestamp();
+
+五、小结
+- 触发器函数定义触发器执行的操作。
+- CREATE TRIGGER 绑定触发器到表及事件。
+- 触发器可以在不同时间点响应多种事件。
+*/</code></pre>
+</article>
+
+
+<article class="card anchor" id="s70">
+  <h2>70）PostgreSQL 触发器的删除</h2>
+  <pre><code>/*
+一、DROP TRIGGER 简介
+- 用于删除已定义的触发器。
+- 必须指定触发器所在的表。
+
+二、基本语法
+
+DROP TRIGGER [IF EXISTS] trigger_name ON table_name [CASCADE | RESTRICT];
+
+参数说明：
+- trigger_name：要删除的触发器名称。
+- table_name：触发器所在的表名。
+- IF EXISTS：如果触发器不存在则不报错。
+- CASCADE：自动删除依赖该触发器的对象。
+- RESTRICT：如果有依赖项，则拒绝删除（默认）。
+
+三、示例
+
+-- 删除名为 set_timestamp 的触发器
+DROP TRIGGER set_timestamp ON employees;
+
+-- 如果存在才删除
+DROP TRIGGER IF EXISTS set_timestamp ON employees;
+
+-- 强制级联删除依赖对象（如有）
+DROP TRIGGER set_timestamp ON employees CASCADE;
+
+四、注意事项
+- 不能直接删除触发器函数（要使用 DROP FUNCTION）。
+- 删除触发器不会影响原始表结构或数据。
+*/</code></pre>
+</article>
+
+
+<article class="card anchor" id="s71">
+  <h2>71）PostgreSQL 触发器的管理</h2>
+  <pre><code>/*
+一、重命名触发器（修改名称）
+
+语法：
+ALTER TRIGGER old_name ON table_name RENAME TO new_name;
+
+示例：
+-- 将触发器名 set_timestamp 改为 update_timestamp
+ALTER TRIGGER set_timestamp ON employees RENAME TO update_timestamp;
+
+
+二、禁用触发器
+
+语法：
+-- 禁用单个触发器：
+ALTER TABLE table_name DISABLE TRIGGER trigger_name;
+
+-- 禁用所有触发器（包括系统触发器）：
+ALTER TABLE table_name DISABLE TRIGGER ALL;
+
+示例：
+-- 禁用某个特定触发器
+ALTER TABLE employees DISABLE TRIGGER update_timestamp;
+
+-- 禁用所有触发器
+ALTER TABLE employees DISABLE TRIGGER ALL;
+
+
+三、启用触发器
+
+语法：
+-- 启用单个触发器：
+ALTER TABLE table_name ENABLE TRIGGER trigger_name;
+
+-- 启用所有触发器：
+ALTER TABLE table_name ENABLE TRIGGER ALL;
+
+示例：
+-- 启用某个触发器
+ALTER TABLE employees ENABLE TRIGGER update_timestamp;
+
+-- 启用所有触发器
+ALTER TABLE employees ENABLE TRIGGER ALL;
+
+四、注意事项：
+- 禁用触发器后，相关的 INSERT / UPDATE / DELETE 操作将不会触发。
+- 禁用或启用触发器，必须具有对表的 ALTER 权限。
+- 触发器函数本身不会被删除或修改，只影响触发器行为。
+*/</code></pre>
+</article>
+
+
+<article class="card anchor" id="s72">
+  <h2>72）PostgreSQL 角色管理</h2>
+  <pre><code>/*
+一、什么是角色（Role）
+
+- PostgreSQL 用“角色”统一管理用户和权限；
+- 每个连接数据库的用户其实就是一个“可登录的角色”；
+- 角色分为：
+  1. 可登录角色（LOGIN）：可以连接数据库；
+  2. 不可登录角色：用于作为权限集合（类似权限组）；
+- 角色之间可以通过继承实现权限共享。
+
+二、创建角色
+
+1. 创建可登录的用户角色：
+CREATE ROLE role_name WITH LOGIN PASSWORD 'password';
+
+示例：
+CREATE ROLE alice WITH LOGIN PASSWORD 'alice123';
+
+2. 创建不可登录的权限组角色：
+CREATE ROLE readonly;
+
+3. 创建带继承权限的角色（默认）：
+CREATE ROLE dev_user WITH LOGIN INHERIT PASSWORD 'dev123';
+
+4. 创建不继承的角色：
+CREATE ROLE isolated_user WITH LOGIN NOINHERIT PASSWORD 'iso123';
+
+三、角色继承（INHERIT / NOINHERIT）
+
+- PostgreSQL 中，角色可以“继承”被授予的角色的权限。
+- 使用 `GRANT` 将 role_b 授权给 role_a 后，是否**自动拥有权限**，取决于 `INHERIT` 设置：
+
+| 设置        | 效果说明                                               |
+|-------------|--------------------------------------------------------|
+| INHERIT     | 默认设置，自动拥有被授予角色的权限（无需 SET ROLE）   |
+| NOINHERIT   | 不自动继承，被授予角色的权限，需手动 SET ROLE 使用    |
+
+示例：
+
+-- 创建两个角色
+CREATE ROLE readonly;
+CREATE ROLE alice WITH LOGIN INHERIT PASSWORD '123456';
+
+-- 授权 readonly 给 alice
+GRANT readonly TO alice;
+
+-- alice 自动继承 readonly 的权限（因为有 INHERIT）
+
+-- 如果 alice 是 NOINHERIT，则需要显式：
+SET ROLE readonly;
+
+-- 恢复当前角色：
+RESET ROLE;
+
+四、授予权限
+
+-- 授予数据库连接权限：
+GRANT CONNECT ON DATABASE dbname TO role_name;
+
+-- 授权对表的操作：
+GRANT SELECT, INSERT ON table_name TO role_name;
+
+-- 授权继承其他角色权限：
+GRANT role_b TO role_a;
+
+-- 授权所有表的权限（批量）：
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO role_name;
+
+五、修改角色属性
+
+-- 修改密码：
+ALTER ROLE alice WITH PASSWORD 'newpass';
+
+-- 允许创建数据库：
+ALTER ROLE alice WITH CREATEDB;
+
+-- 修改继承设置：
+ALTER ROLE alice WITH NOINHERIT;
+ALTER ROLE alice WITH INHERIT;
+
+-- 修改角色名：
+ALTER ROLE alice RENAME TO alice_dev;
+
+六、删除角色
+
+-- 删除角色：
+DROP ROLE readonly;
+
+-- 防止报错（角色不存在时）：
+DROP ROLE IF EXISTS readonly;
+
+-- 若角色已拥有对象，应先处理：
+-- 重新分配对象：
+REASSIGN OWNED BY old_role TO new_role;
+
+-- 丢弃拥有的所有对象：
+DROP OWNED BY old_role;
+
+七、查看角色和权限
+
+-- 查看所有角色：
+\du      -- psql 中使用
+
+-- 查询角色属性：
+SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, rolinherit
+FROM pg_roles;
+
+-- 当前用户：
+SELECT current_user;
+
+-- 查看权限：
+SELECT * FROM information_schema.role_table_grants
+WHERE grantee = 'alice';
+
+八、常见角色属性汇总
+
+| 属性         | 说明                                               |
+|--------------|----------------------------------------------------|
+| LOGIN        | 能否登录数据库                                     |
+| SUPERUSER    | 是否为超级用户（拥有所有权限）                    |
+| CREATEDB     | 是否可以创建数据库                                 |
+| CREATEROLE   | 是否可以创建/删除其他角色                          |
+| INHERIT      | 是否自动继承授予的其他角色的权限（默认开启）       |
+| NOINHERIT    | 需显式 SET ROLE 才能使用被授予角色的权限           |
+| REPLICATION  | 是否具有流复制权限                                 |
+| BYPASSRLS    | 是否可以绕过行级安全策略（RLS）                    |
+
+九、总结
+
+- 使用 `CREATE ROLE` 定义用户/权限组；
+- `INHERIT` 控制是否自动继承其他角色权限；
+- `GRANT` 用于分配权限或角色；
+- `ALTER ROLE` 可修改角色属性；
+- `DROP ROLE` 删除角色，需先处理依赖。
+*/</code></pre>
+</article>
+
+<article class="card anchor" id="s73">
+  <h2>73）PostgreSQL 数据库的备份</h2>
+  <pre><code>一、备份方式分类
+
+PostgreSQL 提供多种备份方式，主要分为：
+
+1. SQL文本备份（逻辑备份）：
+   - 使用 `pg_dump` 工具；
+   - 导出为 SQL 文件；
+   - 适合结构和数据的迁移或版本控制；
+   - 可选择备份整个数据库或部分表。
+
+2. 自定义归档格式备份（压缩）：
+   - 使用 `pg_dump -Fc`；
+   - 可用于 `pg_restore` 还原；
+   - 支持并行还原。
+
+3. 目录格式备份（适合并行恢复）：
+   - 使用 `pg_dump -Fd`；
+   - 输出为一个目录，适合大数据量。
+
+4. 文件系统级别备份（物理备份）：
+   - 使用 `pg_basebackup` 或直接复制数据目录；
+   - 适合数据库级别完整还原；
+   - 需搭配归档日志 (WAL)。
+
+---
+
+二、pg_dump 命令使用
+
+1. 备份整个数据库（文本格式）：
+pg_dump -U username -d dbname -f backup.sql
+
+2. 备份整个数据库（自定义格式）：
+pg_dump -U username -F c -f backup.dump dbname
+
+3. 备份指定表：
+pg_dump -U username -d dbname -t table_name -f table_backup.sql
+
+4. 压缩备份输出：
+pg_dump -U username -d dbname | gzip > backup.sql.gz
+
+5. 指定 schema 备份：
+pg_dump -U username -n schema_name -f schema_backup.sql dbname
+
+6. 使用目录格式备份（并行支持）：
+pg_dump -U username -Fd -j 4 -f /path/to/backup_dir dbname
+
+参数说明：
+- `-U`：指定用户名；
+- `-d`：目标数据库；
+- `-F`：备份格式（p=plain, c=custom, d=directory）；
+- `-f`：输出文件名；
+- `-j`：并行度（配合 `-Fd` 使用）；
+
+---
+
+三、pg_basebackup：物理备份工具
+
+适合做流复制或完整的物理备份。
+
+基本用法：
+pg_basebackup -U repl_user -D /path/to/backup -Fp -Xs -P
+
+说明：
+- `-D`：指定输出目录；
+- `-Fp`：使用普通文件格式（也可 -Ft 为 tar）；
+- `-Xs`：包含 WAL 日志；
+- `-P`：显示进度。
+
+注意：
+- 需开启 `wal_level = replica`；
+- 需配置 `pg_hba.conf` 允许 `replication` 用户访问；
+- 通常配合流复制使用。
+
+---
+
+四、备份注意事项
+
+- **定期备份**：生产环境建议至少每日备份；
+- **备份验证**：定期使用 `pg_restore` 或 `psql` 测试还原；
+- **避免高峰期**：备份期间数据库可能变慢；
+- **权限控制**：备份用户必须具备读取数据库所有对象的权限；
+- **安全存储**：备份文件应加密并异地保存。
+
+---
+
+五、常见问题
+
+| 问题                        | 说明                                      |
+|-----------------------------|-------------------------------------------|
+| pg_dump 无法连接数据库     | 检查用户名、密码、网络、端口              |
+| 权限不足                   | 使用超级用户或具备读取权限的角色          |
+| pg_basebackup 报错权限     | 检查 `pg_hba.conf` 中是否授权 replication |
+| 备份文件太大               | 使用压缩（gzip 或 `pg_dump -Fc`）         |
+
+---
+
+六、总结
+
+| 工具         | 类型       | 用途                       |
+|--------------|------------|----------------------------|
+| pg_dump      | 逻辑备份   | 导出为 SQL 或自定义格式    |
+| pg_restore   | 逻辑恢复   | 用于还原自定义格式         |
+| pg_basebackup| 物理备份   | 用于全量热备或流复制初始化 |
+
+-- 建议配合计划任务（cron）自动备份，并加上时间戳区分备份文件。</code></pre>
+</article>
+
+
+<article class="card anchor" id="s74">
+  <h2>74）PostgreSQL 数据库的还原</h2>
+  <pre><code>一、【还原方式分类】
+
+-- PostgreSQL 的还原方式取决于备份格式。不同方式支持的功能如下：
+
+1. SQL 脚本（使用 psql 工具）
+   - ✅ 支持还原结构 + 数据
+   - ❌ 不支持并行
+   - ✅ 支持部分还原（需手动编辑 SQL 文件）
+
+2. 自定义格式（.dump 文件，使用 pg_restore）
+   - ✅ 支持还原结构 + 数据
+   - ✅ 支持并行还原（使用 -j 选项）
+   - ✅ 支持选择性还原（通过参数如 -t、-n 等）
+
+3. 目录格式（使用 -Fd 生成，使用 pg_restore）
+   - ✅ 支持还原结构 + 数据
+   - ✅ 支持并行还原
+   - ✅ 支持选择性还原
+
+4. 物理备份（拷贝数据目录或使用 pg_basebackup）
+   - ✅ 支持完整还原（整个数据库实例）
+   - ❌ 不支持并行
+   - ❌ 不支持部分还原（必须恢复整个实例）
+
+-- 建议：
+-- - 日常备份使用 SQL 脚本或自定义格式；
+-- - 对大型数据库，推荐使用目录格式配合并行还原；
+-- - 灾难恢复场景，使用物理备份更合适。
+
+二、使用 SQL 脚本还原（psql 工具）
+
+适用于 `pg_dump` 导出的 `.sql` 文件。
+
+基本语法：
+psql -U username -d target_db -f backup.sql
+
+示例：
+psql -U postgres -d mydb -f backup.sql
+
+说明：
+- `-U`：指定连接用户；
+- `-d`：目标数据库（需已存在）；
+- `-f`：SQL 脚本备份路径；
+- 使用前需手动创建数据库。
+
+------------------------------------------------------------
+
+三、使用 pg_restore 还原自定义格式或目录格式
+
+适用于 `.dump` 文件或目录格式（-Fd）。
+
+基本语法：
+pg_restore -U username -d target_db backup.dump
+
+示例（自定义格式）：
+pg_restore -U postgres -d mydb backup.dump
+
+示例（目录格式 + 并行）：
+pg_restore -U postgres -d mydb -Fd backup_dir -j 4
+
+如果想让 pg_restore 创建数据库，可以配合 -C 使用（需要连接到 template1）：
+pg_restore -U postgres -C -d template1 backup.dump
+
+------------------------------------------------------------
+
+四、pg_restore 常用参数说明
+
+| 参数                | 含义                                 |
+|---------------------|--------------------------------------|
+| -C                  | 创建数据库（配合 -d template1）     |
+| -c                  | 还原前先清除原有对象（DROP）        |
+| -j [n]              | 并行线程数（只适用于目录格式）      |
+| -t table_name       | 只恢复指定表                         |
+| -n schema_name      | 只恢复指定 schema                    |
+| --list              | 查看备份文件内容（可用于过滤恢复）  |
+| --schema-only       | 仅还原结构                           |
+| --data-only         | 仅还原数据                           |
+
+示例：只恢复某个表
+pg_restore -U postgres -d mydb -t customers backup.dump
+
+示例：只还原结构
+pg_restore -U postgres -d mydb --schema-only backup.dump
+
+------------------------------------------------------------
+
+五、物理备份还原（data 目录）
+
+适用于 pg_basebackup 或拷贝整个 data 目录的物理备份。
+
+还原步骤：
+1. 停止 PostgreSQL 服务；
+2. 将 data 目录替换为备份目录；
+3. 确保权限设置正确（postgres 用户拥有）；
+4. 恢复配置文件（如 postgresql.conf、pg_hba.conf）；
+5. 启动 PostgreSQL 服务。
+
+说明：
+- 若包含 WAL 日志（归档模式），需配合 restore_command 恢复；
+- 适合灾难恢复、热备或主从同步初始化；
+- 不支持部分还原，整个实例级别。
+
+------------------------------------------------------------
+
+六、还原注意事项
+
+- 恢复 SQL 脚本时数据库需已存在（除非脚本中包含 CREATE DATABASE）；
+- 使用 pg_restore + -C 可自动创建数据库；
+- 恢复后建议执行 `ANALYZE` 或 `VACUUM ANALYZE` 优化查询性能；
+- 恢复后检查权限、扩展、依赖是否齐全；
+- 若有外键依赖，可加 `--disable-triggers` 临时关闭触发器。
+
+------------------------------------------------------------
+
+七、常见问题处理
+
+1. 错误：关系已存在
+   → 加 `-c` 参数清空原有对象再还原。
+
+2. 报错权限不足
+   → 确保使用超级用户或有足够权限的角色。
+
+3. 中文乱码
+   → 创建数据库时需指定编码，例如：UTF8。
+
+4. pg_restore 无法识别 SQL 文件
+   → pg_restore 仅支持 `.dump` / 目录格式，SQL 文件需用 psql 还原。
+
+------------------------------------------------------------
+
+八、总结
+
+| 工具       | 适用格式       | 特点                             |
+|------------|----------------|----------------------------------|
+| psql       | SQL 脚本       | 简单易用，结构清晰               |
+| pg_restore | .dump/目录格式 | 支持并行、选择性还原             |
+| 物理恢复   | data 目录      | 快速完整，但粗粒度，难以过滤     |
+
+-- 最佳实践：中小型数据库使用 SQL 备份；大型数据库推荐自定义格式 + pg_restore。</code></pre>
+</article>
+
+
+<article class="card anchor" id="s75">
+  <h2>75）PostgreSQL 表空间创建</h2>
+  <pre><code>一、表空间简介
+- 表空间（Tablespace）用于指定数据库对象（表、索引等）在物理存储上的位置。
+- 通过表空间，可以将数据分散到不同的磁盘，提高性能和管理灵活性。
+
+二、创建表空间的要求
+- 操作系统上必须存在目标目录，且 PostgreSQL 服务器进程拥有该目录的读写权限。
+- 目录必须为空，且不能是 PostgreSQL 数据目录的一部分。
+
+三、创建表空间的语法
+
+CREATE TABLESPACE tablespace_name
+LOCATION 'directory_path';
+
+- tablespace_name：自定义表空间名；
+- directory_path：操作系统上的绝对路径，必须是服务器能访问的路径。
+
+四、示例
+
+-- 创建一个表空间，存储路径为 /var/lib/postgresql/tablespaces/fastspace
+CREATE TABLESPACE fastspace
+LOCATION '/var/lib/postgresql/tablespaces/fastspace';
+
+五、使用表空间
+
+-- 创建表时指定表空间
+CREATE TABLE my_table (
+    id SERIAL PRIMARY KEY,
+    data TEXT
+) TABLESPACE fastspace;
+
+-- 创建索引时指定表空间
+CREATE INDEX my_index ON my_table(data) TABLESPACE fastspace;
+
+六、查看现有表空间
+
+-- 查看所有表空间信息
+SELECT spcname, pg_tablespace_location(oid) AS location FROM pg_tablespace;
+
+七、注意事项
+- 删除表空间前，必须先删除所有依赖该表空间的对象；
+- 删除表空间命令：DROP TABLESPACE tablespace_name;
+- 表空间只管理物理存储，不影响逻辑数据库结构。
+
+八、小结
+
+| 作用         | 说明                            |
+|--------------|--------------------------------|
+| 优化存储     | 将数据库对象放置于不同磁盘/路径  |
+| 提升性能     | 分散 I/O，减轻单一磁盘压力      |
+| 管理灵活性   | 便于存储规划和空间管理           |</code></pre>
+</article>
+
 
 <article class="card anchor" id="s76">
   <h2>76）表空间修改和删除</h2>
