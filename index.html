@@ -56,7 +56,7 @@
       <strong>目录</strong>
       <ol>
         <li><a href="#s1">SQL 执行顺序（通用）</a></li>
-        <li><a href="#s2">字符串 / 正则（含 REGEXP 等价写法）</a></li>
+        <li><a href="#s2">字符串 / 正则表达式</a></li>
         <li><a href="#s3">日期时间与间隔：EXTRACT / INTERVAL / 时间差</a></li>
         <li><a href="#s4">TRUNCATE / ALTER TABLE（PostgreSQL 写法）</a></li>
         <li><a href="#s5">窗口函数与窗口帧</a></li>
@@ -142,13 +142,13 @@
         <p><span class="tag">FROM/ON</span> → <span class="tag">WHERE</span> → <span class="tag">GROUP BY</span> → <span class="tag">HAVING</span> → <span class="tag">SELECT（窗口函数在此阶段）</span> → <span class="tag">ORDER BY</span></p>
       </article>
 
-      <article class="card anchor" id="s2">
-        <h2>2）字符串 / 正则（替代 MySQL REGEXP_SUBSTR）</h2>
-        <ul>
-          <li><b>字符串拼接：</b> <code>expr1 || expr2</code></li>
-          <li><b>长度：</b> <code>char_length(text)</code>（字符数），<code>octet_length(text)</code>（字节数）；<code>length(text)</code> 等价于 <code>char_length</code></li>
-        </ul>
-        <pre><code>-- 取第一个匹配子串（等价 REGEXP_SUBSTR 的基本场景）
+<article class="card anchor" id="s2">
+  <h2>2）字符串 / 正则表达式</h2>
+  <ul>
+    <li><b>字符串拼接：</b> <code>expr1 || expr2</code></li>
+    <li><b>长度：</b> <code>char_length(text)</code>（字符数），<code>octet_length(text)</code>（字节数）；<code>length(text)</code> 等价于 <code>char_length</code></li>
+  </ul>
+  <pre><code>-- 取第一个匹配子串（等价 REGEXP_SUBSTR 的基本场景）
 SELECT substring('abc-123-def' FROM '\d+');  -- → '123'
 
 -- 全部匹配（返回 setof text）
@@ -157,7 +157,63 @@ SELECT regexp_matches('a1b22c333', '\d+', 'g');  -- 多行返回 1,22,333
 -- 是否匹配
 SELECT 'foo@example.com' ~ '^[^@]+@[^@]+$';  -- true/false
 </code></pre>
-      </article>
+  <section>
+    <h3>PostgreSQL 正则表达式笔记</h3>
+
+    <h4>常用函数</h4>
+    <ul>
+      <li><code>SUBSTRING('text' FROM '正则表达式')</code>  
+        返回第一个匹配的第一个捕获分组内容（如果有分组），否则返回整个匹配的子串。</li>
+      <li><code>REGEXP_matches('text', '正则表达式', 'g')</code>  
+        返回所有匹配的结果（数组形式）。'g' 表示全局匹配。</li>
+    </ul>
+
+    <h4>常用正则符号</h4>
+    <table>
+      <tr><td><code>\d+</code></td><td>连续的数字</td></tr>
+      <tr><td><code>[a-z]+</code></td><td>连续的小写字母</td></tr>
+      <tr><td><code>[a-zA-Z]+</code></td><td>连续的大小写字母</td></tr>
+      <tr><td><code>[a-z]+\d+</code></td><td>小写字母后接数字</td></tr>
+      <tr><td><code>\w</code></td><td>等价 [a-zA-Z0-9_]</td></tr>
+      <tr><td><code>\s+</code></td><td>一个或多个空白符</td></tr>
+      <tr><td><code>.</code></td><td>任意单个字符（除换行）</td></tr>
+      <tr><td><code>*</code></td><td>0 次或多次</td></tr>
+      <tr><td><code>*?</code></td><td>非贪婪版本</td></tr>
+      <tr><td><code>+</code></td><td>1 次或多次</td></tr>
+      <tr><td><code>+?</code></td><td>非贪婪版本</td></tr>
+      <tr><td><code>?</code></td><td>0 或 1 次</td></tr>
+      <tr><td><code>{n,m}</code></td><td>n 到 m 次</td></tr>
+    </table>
+
+    <h4>锚点符号</h4>
+    <ul>
+      <li><code>^</code> 开头</li>
+      <li><code>$</code> 结尾</li>
+    </ul>
+
+    <h4>字符集</h4>
+    <p><code>[abc]</code> 匹配 a/b/c； <code>[^abc]</code> 匹配非 a/b/c</p>
+
+    <h4>正则分组 () 与反向引用</h4>
+    <p><code>(abc)+</code> 表示整体重复；<code>(\w+)\s+\1</code> 表示相同单词重复。</p>
+
+    <h4>单词边界</h4>
+    <p><code>\bthe\b</code> 匹配完整单词 "the"</p>
+
+    <h4>贪婪 vs 非贪婪</h4>
+    <pre><code><.*>   -- 贪婪，匹配 &lt;abc&gt;&lt;def&gt;
+<.*?>  -- 非贪婪，匹配 &lt;abc&gt;
+</code></pre>
+
+    <h4>补充说明</h4>
+    <ul>
+      <li><code>substring()</code> 有分组时返回分组，无分组返回整个匹配。</li>
+      <li><code>regexp_matches()</code> 可获取多个匹配，返回数组。</li>
+      <li>多个分组时，<code>regexp_matches()</code> 会返回包含所有组的数组。</li>
+    </ul>
+  </section>
+</article>
+
 
       <article class="card anchor" id="s3">
         <h2>3）日期时间与间隔：EXTRACT / INTERVAL / 时间差</h2>
