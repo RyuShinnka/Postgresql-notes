@@ -243,62 +243,138 @@ SELECT CURRENT_DATE + INTERVAL '1 month';
       </article>
 
       <article class="card anchor" id="s4">
-        <h2>4）TRUNCATE / ALTER TABLE（PostgreSQL 写法）</h2>
-        <div class="two-col">
-          <div>
-            <h3>TRUNCATE</h3>
-            <pre><code>TRUNCATE TABLE table_name RESTART IDENTITY;  -- 重置自增
--- 可选：CASCADE 级联
-</code></pre>
-          </div>
-          <div>
-            <h3>列操作（PostgreSQL 没有 MySQL 的 CHANGE/MODIFY/AFTER）</h3>
-            <pre><code>-- 添加列
+  <h2>4）TRUNCATE / ALTER TABLE</h2>
+  <div class="two-col">
+    <div>
+      <h3>TRUNCATE</h3>
+      <pre><code>
+-- 删除表中所有记录并重置自增主键序列（通常从 1 开始）
+TRUNCATE TABLE table_name RESTART IDENTITY;
+
+-- 如果表有关联的外键，可以使用 CASCADE 选项级联清空相关表
+TRUNCATE TABLE table_name RESTART IDENTITY CASCADE;
+      </code></pre>
+      <p>
+        说明：
+        <ul>
+          <li><code>RESTART IDENTITY</code>：重置自增序列，下一条插入的记录 ID 会从初始值开始。</li>
+          <li><code>CASCADE</code>：如果有外键依赖，会同时清空关联表。</li>
+          <li>TRUNCATE 比 <code>DELETE FROM</code> 更快，但不触发触发器。</li>
+        </ul>
+      </p>
+    </div>
+    <div>
+      <h3>列操作（PostgreSQL 没有 MySQL 的 CHANGE/MODIFY/AFTER）</h3>
+      <pre><code>
+-- 添加列
 ALTER TABLE t ADD COLUMN name type;
 
--- 修改类型
+-- 修改列类型
 ALTER TABLE t ALTER COLUMN name TYPE new_type;
 
 -- 重命名列
 ALTER TABLE t RENAME COLUMN old TO new;
 
--- 设置/取消默认值
+-- 设置默认值
 ALTER TABLE t ALTER COLUMN name SET DEFAULT ...;
+
+-- 取消默认值
 ALTER TABLE t ALTER COLUMN name DROP DEFAULT;
 
--- 非空/可空
+-- 设置非空约束
 ALTER TABLE t ALTER COLUMN name SET NOT NULL;
+
+-- 取消非空约束
 ALTER TABLE t ALTER COLUMN name DROP NOT NULL;
-</code></pre>
-          </div>
-        </div>
-      </article>
+      </code></pre>
+    </div>
+  </div>
+</article>
 
-      <article class="card anchor" id="s5">
-        <h2>5）窗口函数与窗口帧</h2>
-        <h3>常用函数</h3>
-        <p><code>SUM</code> / <code>AVG</code> / <code>COUNT</code> / <code>MIN</code> / <code>MAX</code>，<code>ROW_NUMBER</code>，<code>RANK</code>，<code>DENSE_RANK</code>，<code>NTILE(n)</code>，<code>FIRST_VALUE</code>，<code>LAST_VALUE</code>，<code>NTH_VALUE</code>，<code>LAG</code>，<code>LEAD</code></p>
-        <h3>窗口帧（ROWS / RANGE）</h3>
-        <pre><code>ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+<article class="card anchor" id="s5">
+  <h2>5）窗口函数与窗口帧</h2>
+
+  <h3>常用窗口函数</h3>
+  <p>
+    窗口函数是在查询结果的“窗口”或“分组”范围内，对每一行进行计算的函数，常见的包括：
+  </p>
+  <ul>
+    <li><code>SUM</code> / <code>AVG</code> / <code>COUNT</code> / <code>MIN</code> / <code>MAX</code>：聚合函数的窗口版本，用于计算当前窗口内的和、平均值、计数、最小值和最大值。</li>
+    <li><code>ROW_NUMBER()</code>：返回当前行在窗口中的序号，序号连续，没重复。</li>
+    <li><code>RANK()</code>：返回当前行的排名，有并列的排名时，会跳过后续名次。</li>
+    <li><code>DENSE_RANK()</code>：类似 RANK，但不会跳过名次。</li>
+    <li><code>NTILE(n)</code>：将行分成 n 个桶，返回当前行属于第几个桶。</li>
+    <li><code>FIRST_VALUE()</code> / <code>LAST_VALUE()</code> / <code>NTH_VALUE()</code>：返回窗口中第一行、最后一行或第 n 行的值。</li>
+    <li><code>LAG()</code> / <code>LEAD()</code>：分别访问当前行的前一行或后一行的值，常用于计算差值或比较前后数据。</li>
+  </ul>
+
+  <h3>窗口帧（ROWS / RANGE）</h3>
+  <p>
+    窗口帧定义了“窗口”的具体范围，用来确定当前行的计算范围。窗口帧常用关键字有：
+  </p>
+  <pre><code>
+-- ROWS 按行数范围定义窗口帧
+ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+-- 从窗口开头（第一行）到当前行
+
 ROWS BETWEEN 3 PRECEDING AND CURRENT ROW
+-- 当前行及之前的3行，一共最多4行参与计算
 
--- 基于值范围（日期/数值）
+-- RANGE 按值范围定义窗口帧（常用于有序的数值或时间）
 RANGE BETWEEN INTERVAL '30 days' PRECEDING AND CURRENT ROW
-</code></pre>
-      </article>
+-- 取当前行日期前30天到当前行的所有行作为窗口
+  </code></pre>
+
+  <p>
+    <strong>总结：</strong>  
+    - <code>ROWS</code> 是基于行的物理位置来确定范围，精确到行数。  
+    - <code>RANGE</code> 是基于排序列的值范围来确定窗口，比如日期或数值区间。  
+    - 窗口帧配合窗口函数，可以实现复杂的累计、滑动计算等操作。
+  </p>
+</article>
+
 
       <article class="card anchor" id="s6">
-        <h2>6）JOIN 全家桶</h2>
-        <ul>
-          <li><b>INNER JOIN：</b> 仅保留匹配行</li>
-          <li><b>LEFT JOIN：</b> 左表全部 + 右表匹配，右侧缺失填 NULL</li>
-          <li><b>RIGHT JOIN：</b> 右表全部 + 左表匹配</li>
-          <li><b>FULL OUTER JOIN：</b> 两侧所有行的并集（MySQL 不支持）</li>
-          <li><b>CROSS JOIN：</b> 笛卡尔积</li>
-          <li><b>NATURAL JOIN：</b> 同名列自动连接（不透明，生产不推荐）</li>
-          <li><b>SELF JOIN：</b> 同表自连接（层级/对比/去重等）</li>
-        </ul>
-      </article>
+  <h2>6）JOIN 全家桶</h2>
+  <ul>
+    <li>
+      <b>INNER JOIN：</b>  
+      只返回两个表中匹配的行，必须满足连接条件。  
+      <em>（常用，筛选两个表都有的对应数据）</em>
+    </li>
+    <li>
+      <b>LEFT JOIN（LEFT OUTER JOIN）：</b>  
+      返回左表的所有行，右表匹配的行会显示，右表无对应则显示 NULL。  
+      <em>（左表为主表，保留全部记录）</em>
+    </li>
+    <li>
+      <b>RIGHT JOIN（RIGHT OUTER JOIN）：</b>  
+      返回右表的所有行，左表匹配的行会显示，左表无对应则显示 NULL。  
+      <em>（右表为主表，保留全部记录）</em>
+    </li>
+    <li>
+      <b>FULL OUTER JOIN：</b>  
+      返回两个表所有行的并集，匹配的行合并显示，没匹配的另一侧填 NULL。  
+      <em>（MySQL 不支持，PostgreSQL 支持）</em>
+    </li>
+    <li>
+      <b>CROSS JOIN：</b>  
+      返回两个表的笛卡尔积，结果行数 = 左表行数 × 右表行数。  
+      <em>（慎用，数据量大时会爆炸性增长）</em>
+    </li>
+    <li>
+      <b>NATURAL JOIN：</b>  
+      自动根据两个表中所有同名列进行连接，且不需显式写条件。  
+      <em>（不透明，不推荐生产使用，容易出错）</em>
+    </li>
+    <li>
+      <b>SELF JOIN：</b>  
+      表自己和自己连接，通常用于层级关系、对比或者去重。  
+      <em>（写法示例：FROM table1 t1 JOIN table1 t2 ON ...）</em>
+    </li>
+  </ul>
+</article>
+
 
       <article class="card anchor" id="s7">
         <h2>7）LIKE / ILIKE 与操作符</h2>
@@ -309,128 +385,240 @@ RANGE BETWEEN INTERVAL '30 days' PRECEDING AND CURRENT ROW
       </article>
 
       <article class="card anchor" id="s8">
-        <h2>8）集合操作：UNION / INTERSECT / EXCEPT</h2>
-        <ul>
-          <li><b>UNION</b>（去重） / <b>UNION ALL</b>（不去重）</li>
-          <li><b>INTERSECT</b>（交集，去重；<code>INTERSECT ALL</code> 保留重复）</li>
-          <li><b>EXCEPT</b>（差集，去重；<code>EXCEPT ALL</code> 保留重复）</li>
-        </ul>
-      </article>
+  <h2>8）集合操作：UNION / INTERSECT / EXCEPT</h2>
+  <ul>
+    <li>
+      <b>UNION</b>（去重）  
+      合并两个查询结果，自动去除重复行。  
+      <br>例如：查询两个表的所有不重复记录。
+    </li>
+    <li>
+      <b>UNION ALL</b>（不去重）  
+      合并两个查询结果，保留所有行，包括重复。  
+      <br>效率比 UNION 高，适合不需要去重的场景。
+    </li>
+    <li>
+      <b>INTERSECT</b>（交集，去重）  
+      返回两个查询结果都包含的行，自动去重。  
+      <br>例如：找出两个表共有的记录。
+    </li>
+    <li>
+      <code>INTERSECT ALL</code>  
+      返回两个查询结果都包含的行，保留重复行的次数。  
+      <br>PostgreSQL 支持，MySQL 不支持。
+    </li>
+    <li>
+      <b>EXCEPT</b>（差集，去重）  
+      返回第一个查询结果中有，但第二个查询结果中没有的行，自动去重。  
+      <br>例如：找出只存在于第一个表中的记录。
+    </li>
+    <li>
+      <code>EXCEPT ALL</code>  
+      返回第一个查询结果中有，但第二个查询结果中没有的行，保留重复次数。  
+      <br>PostgreSQL 支持，MySQL 不支持。
+    </li>
+  </ul>
+</article>
+
 
       <article class="card anchor" id="s9">
-        <h2>9）GROUPING SETS / CUBE / ROLLUP</h2>
-        <pre><code>-- GROUPING SETS：一个查询中进行多种分组
+  <h2>9）GROUPING SETS / CUBE / ROLLUP</h2>
+  <p><b>多维度汇总和分组的高级用法</b>，方便在一个查询中得到多种层次的汇总结果。</p>
+  
+  <h3>GROUPING SETS</h3>
+  <p>允许你在同一个查询里定义多组分组规则，分别计算不同组合的汇总值。</p>
+  <pre><code>
+-- 按 region 和 product 分组求和
+-- 以及仅按 region 分组求和
+-- 还有整体总和（空分组）
 SELECT region, product, SUM(sales)
 FROM fact
 GROUP BY GROUPING SETS ((region, product), (region), ());
+  </code></pre>
 
--- CUBE：所有维度的全组合
+  <h3>CUBE</h3>
+  <p>自动生成所有维度的所有组合的汇总（即“全组合”），包含每个维度单独分组、多个维度组合分组以及整体汇总。</p>
+  <pre><code>
 SELECT region, product, SUM(sales)
 FROM fact
 GROUP BY CUBE (region, product);
+  </code></pre>
 
--- ROLLUP：逐级汇总（细 → 粗）
+  <h3>ROLLUP</h3>
+  <p>生成逐级汇总，按指定维度从最细到最粗的层次依次计算汇总值。</p>
+  <pre><code>
+-- 按年份和月份分组求和，同时生成按年份的汇总，以及总汇总
 SELECT y, m, SUM(sales)
 FROM fact
 GROUP BY ROLLUP (y, m);
-</code></pre>
-      </article>
+  </code></pre>
+</article>
+
 
       <article class="card anchor" id="s10">
-        <h2>10）子查询：ANY / ALL / EXISTS / NOT EXISTS</h2>
-        <pre><code>-- = ANY 等价于 IN
-x = ANY (SELECT id FROM t)
+  <h2>10）子查询：ANY / ALL / EXISTS / NOT EXISTS</h2>
 
--- &gt; ANY 大于集合最小值； &lt; ANY 小于集合最大值
-x &gt; ANY (SELECT val FROM t)
+  <h3>= ANY（等价于 IN）</h3>
+  <p>判断某个值是否等于子查询结果中的任意一个值，功能和 IN 相同。</p>
+  <pre><code>
+x = ANY (SELECT id FROM t);
+-- 等价于
+x IN (SELECT id FROM t);
+  </code></pre>
 
--- ALL：与集合全部比较都成立
-x &gt; ALL (SELECT val FROM t)
+  <h3>&gt; ANY / &lt; ANY</h3>
+  <p>比较操作符和 ANY 联合使用，表示比较结果只要满足子查询中的任意一个值即可。</p>
+  <pre><code>
+x &gt; ANY (SELECT val FROM t);  -- x 大于子查询结果中的最小值
+x &lt; ANY (SELECT val FROM t);  -- x 小于子查询结果中的最大值
+  </code></pre>
 
--- EXISTS：子查询返回至少一行即为 true
-WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id)
+  <h3>&gt; ALL / &lt; ALL</h3>
+  <p>比较操作符和 ALL 联合使用，要求比较结果满足子查询中所有值。</p>
+  <pre><code>
+x &gt; ALL (SELECT val FROM t);  -- x 大于子查询中所有值
+x &lt; ALL (SELECT val FROM t);  -- x 小于子查询中所有值
+  </code></pre>
 
--- NOT EXISTS：查“孤儿数据”
-</code></pre>
-      </article>
+  <h3>EXISTS</h3>
+  <p>判断子查询是否至少返回一行数据，存在即为真。常用于判断某个条件是否满足。</p>
+  <pre><code>
+WHERE EXISTS (
+  SELECT 1 FROM orders o
+  WHERE o.user_id = u.id
+);
+  </code></pre>
+
+  <h3>NOT EXISTS</h3>
+  <p>判断子查询是否没有返回任何行，常用来查找“孤儿数据”或不匹配的数据。</p>
+  <pre><code>
+WHERE NOT EXISTS (
+  SELECT 1 FROM orders o
+  WHERE o.user_id = u.id
+);
+  </code></pre>
+</article>
+
 
       <article class="card anchor" id="s11">
-        <h2>11）CTE 与递归 CTE</h2>
-        <pre><code>-- 普通 CTE
+  <h2>11）CTE 与递归 CTE</h2>
+
+  <h3>普通 CTE（Common Table Expression）</h3>
+  <p>用 WITH 定义一个临时的命名结果集，方便拆分复杂查询，代码更清晰。</p>
+  <pre><code>
 WITH c AS (
   SELECT ... FROM ...
 )
 SELECT * FROM c;
+  </code></pre>
 
--- 递归 CTE（树/图/层级）
+  <h3>递归 CTE</h3>
+  <p>适合处理层级结构数据（树形、图形），通过递归自我引用实现逐层展开。</p>
+  <pre><code>
 WITH RECURSIVE cte_name AS (
-  -- ① 基础查询（起点）
+  -- ① 基础查询：选出起点数据，比如顶层节点
   SELECT ...
   FROM table
   WHERE ...
+
   UNION ALL
-  -- ② 递归部分（自我引用）
+
+  -- ② 递归部分：基于上一层结果，找到下层相关行，递归连接
   SELECT ...
   FROM table t
   JOIN cte_name c ON t.parent_id = c.id
 )
 SELECT * FROM cte_name;
-</code></pre>
-        <ul>
-          <li>组织架构、目录树、图遍历、层级路径/深度计算等</li>
-        </ul>
-      </article>
+  </code></pre>
+
+  <ul>
+    <li>常见应用：组织架构查询、目录树展开、图遍历、计算层级路径或深度</li>
+  </ul>
+</article>
+
 
       <article class="card anchor" id="s12">
-        <h2>12）DML：INSERT...SELECT / UPDATE...FROM / UPSERT</h2>
-        <div class="two-col">
-          <div>
-            <h3>INSERT ... SELECT</h3>
-            <pre><code>INSERT INTO table(col1, col2)
+  <h2>12）DML：INSERT...SELECT / UPDATE...FROM / UPSERT</h2>
+
+  <div class="two-col">
+    <div>
+      <h3>INSERT ... SELECT</h3>
+      <p>从另一个表中查询数据，并插入到目标表中。常用于批量插入。</p>
+      <pre><code>
+INSERT INTO table(col1, col2)
 SELECT col1, col2
 FROM another_table
-WHERE condition;</code></pre>
-          </div>
-          <div>
-            <h3>UPDATE ... FROM（联表更新）</h3>
-            <pre><code>UPDATE a
+WHERE condition;
+      </code></pre>
+    </div>
+
+    <div>
+      <h3>UPDATE ... FROM（联表更新）</h3>
+      <p>通过 JOIN 其他表，使用别的表中的值更新目标表。</p>
+      <pre><code>
+UPDATE a
 SET val = b.val
 FROM b
-WHERE a.id = b.id;</code></pre>
-          </div>
-        </div>
-        <h3>UPSERT（ON CONFLICT）</h3>
-        <pre><code>ON CONFLICT ... DO NOTHING  -- 有冲突就跳过
-ON CONFLICT ... DO UPDATE   -- 有冲突就更新（EXCLUDED）</code></pre>
-      </article>
+WHERE a.id = b.id;
+      </code></pre>
+    </div>
+  </div>
 
-      <article class="card anchor" id="s13">
-        <h2>13）事务</h2>
-        <pre><code>BEGIN;   -- BEGIN WORK; / BEGIN TRANSACTION;
-  -- DML ...
-COMMIT;  -- COMMIT WORK; / COMMIT TRANSACTION;
--- 或者
-ROLLBACK;  -- ROLLBACK WORK; / ROLLBACK TRANSACTION;
-</code></pre>
-      </article>
+  <h3>UPSERT（ON CONFLICT）</h3>
+  <p>插入时如果遇到冲突（如主键重复），可以选择跳过或更新已有记录。</p>
+  <pre><code>
+-- 有冲突则跳过，不报错
+ON CONFLICT (conflict_column) DO NOTHING;
+
+-- 有冲突则更新目标表指定字段
+ON CONFLICT (conflict_column) DO UPDATE SET
+  col1 = EXCLUDED.col1,
+  col2 = EXCLUDED.col2;
+  </code></pre>
+  <p><code>EXCLUDED</code> 代表尝试插入但冲突的那条新记录的值。</p>
+</article>
+
+<article class="card anchor" id="s13">
+  <h2>13）事务（Transaction）</h2>
+  <p>事务用于将一组操作作为一个整体执行，要么全部成功，要么全部失败，保证数据一致性。</p>
+  <pre><code>
+BEGIN;   -- 开始事务（也可写作 BEGIN WORK; 或 BEGIN TRANSACTION;）
+  -- 在这里执行若干条 DML 操作（INSERT、UPDATE、DELETE 等）
+COMMIT;  -- 提交事务，保存所有修改
+
+-- 如果操作过程中出现错误，可以回滚事务，撤销所有操作
+ROLLBACK;  -- 回滚事务，撤销所有未提交的修改
+  </code></pre>
+  <p>事务的四大特性：ACID<br>
+    Atomicity（原子性）、Consistency（一致性）、Isolation（隔离性）、Durability（持久性）
+  </p>
+</article>
+
 
       <article class="card anchor" id="s14">
-        <h2>14）创建数据库与对象大小</h2>
-        <h3>创建数据库</h3>
-        <pre><code>CREATE DATABASE db_name
-  OWNER = role_name
-  ENCODING = 'UTF8'
-  LC_COLLATE = 'C'
-  LC_CTYPE = 'C'
-  TABLESPACE = pg_default
-  CONNECTION LIMIT = -1;
-</code></pre>
-        <h3>对象大小</h3>
-        <pre><code>SELECT pg_size_pretty(pg_relation_size('table_name'));         -- 表
-SELECT pg_size_pretty(pg_total_relation_size('table_name'));   -- 表(含索引/TOAST)
-SELECT pg_size_pretty(pg_database_size(current_database()));    -- 库
-</code></pre>
-      </article>
+  <h2>14）创建数据库与对象大小</h2>
+
+  <h3>创建数据库</h3>
+  <p>创建一个新的数据库，可以指定所有者、编码、排序规则、字符类型、表空间和连接限制。</p>
+  <pre><code>
+CREATE DATABASE db_name
+  OWNER = role_name             -- 数据库所有者
+  ENCODING = 'UTF8'             -- 字符编码（一般用 UTF8）
+  LC_COLLATE = 'C'              -- 排序规则（影响 ORDER BY 等）
+  LC_CTYPE = 'C'                -- 字符分类（影响大小写转换等）
+  TABLESPACE = pg_default       -- 表空间，默认存储位置
+  CONNECTION LIMIT = -1;        -- 最大连接数，-1 表示无限制
+  </code></pre>
+
+  <h3>对象大小查询</h3>
+  <p>查看数据库中表、索引等对象所占用的磁盘空间，结果一般用人类可读的格式显示。</p>
+  <pre><code>
+SELECT pg_size_pretty(pg_relation_size('table_name'));         -- 只计算表本身大小，不含索引等
+SELECT pg_size_pretty(pg_total_relation_size('table_name'));   -- 包含表、索引和 TOAST 大小
+SELECT pg_size_pretty(pg_database_size(current_database()));    -- 当前数据库总大小
+  </code></pre>
+</article>
+
 
       <article class="card anchor" id="s15">
         <h2>15）创建表、列/表级约束（PK/FK/UNIQUE/CHECK/NOT NULL）</h2>
@@ -527,67 +715,111 @@ ALTER TABLE users ALTER COLUMN name SET NOT NULL;
 ALTER TABLE users ALTER COLUMN name DROP NOT NULL;</code></pre>
       </article>
 
-      <article class="card anchor" id="s16">
-        <h2>16）SELECT INTO / CREATE TABLE AS</h2>
-        <pre><code>-- 直接用查询结果建表
+     <article class="card anchor" id="s16">
+  <h2>16）SELECT INTO / CREATE TABLE AS</h2>
+
+  <pre><code>
+-- 用查询结果直接创建新表（PostgreSQL 支持，注意会复制数据结构和数据）
 SELECT * INTO backup_users
 FROM users
 WHERE is_active = true;
 
--- 推荐标准写法（更可控）
+-- 推荐使用标准写法（更灵活，可指定表属性）
 CREATE TABLE backup_users AS
-SELECT * FROM users WHERE is_active = true;</code></pre>
-        <p class="meta"><code>SELECT INTO</code> 只能创建新表；插入已有表请用 <code>INSERT INTO ... SELECT ...</code>。</p>
-      </article>
+SELECT * FROM users WHERE is_active = true;
+  </code></pre>
 
-      <article class="card anchor" id="s17">
-        <h2>17）自增：SERIAL / SEQUENCE / IDENTITY（含管理）</h2>
-        <div class="two-col">
-          <div>
-            <h3>SERIAL（三种）</h3>
-            <ul>
-              <li><code>SMALLSERIAL</code> → <code>smallint</code></li>
-              <li><code>SERIAL</code> → <code>integer</code></li>
-              <li><code>BIGSERIAL</code> → <code>bigint</code></li>
-            </ul>
-            <p class="meta">默认起始值：1；SERIAL 是快捷方式，会创建序列并设默认值。</p>
-          </div>
-          <div>
-            <h3>IDENTITY（SQL 标准，推荐）</h3>
-            <pre><code>id INTEGER GENERATED ALWAYS AS IDENTITY
--- 或：BY DEFAULT AS IDENTITY
--- 可选项：START WITH / INCREMENT BY / MINVALUE / MAXVALUE / CYCLE / CACHE</code></pre>
-          </div>
-        </div>
-        <h3>序列（SEQUENCE）</h3>
-        <pre><code>CREATE SEQUENCE mysequence INCREMENT 5 START 100;
--- OWNED BY：绑定到表列，删除列/表时自动删除序列
-SELECT nextval('mysequence');  -- 100, 105, ...
--- 查询所有序列名
+  <p><code>SELECT INTO</code> 只能用来创建新表，不能用于已有表。</p>
+  <p>如果想向已有表插入查询结果，需用 <code>INSERT INTO existing_table SELECT ...</code>。</p>
+  <p>CREATE TABLE AS 支持更多选项，比如表空间、存储参数等，更推荐。</p>
+</article>
+
+
+<article class="card anchor" id="s17">
+  <h2>17）自增：SERIAL / SEQUENCE / IDENTITY（含管理）</h2>
+  <div class="two-col">
+    <div>
+      <h3>SERIAL 类型（三种）</h3>
+      <ul>
+        <li><code>SMALLSERIAL</code> → 对应 <code>smallint</code>，占用2字节</li>
+        <li><code>SERIAL</code> → 对应 <code>integer</code>，占用4字节，最常用</li>
+        <li><code>BIGSERIAL</code> → 对应 <code>bigint</code>，占用8字节，支持超大数</li>
+      </ul>
+      <p class="meta">默认起始值为1；<code>SERIAL</code> 是语法糖，自动创建序列并设置默认值。</p>
+    </div>
+    <div>
+      <h3>IDENTITY（SQL 标准，推荐用法）</h3>
+      <pre><code>id INTEGER GENERATED ALWAYS AS IDENTITY
+-- 或者
+id INTEGER GENERATED BY DEFAULT AS IDENTITY
+
+-- 可配置选项：
+-- START WITH：起始值
+-- INCREMENT BY：步长
+-- MINVALUE / MAXVALUE：最小/最大值
+-- CYCLE：是否循环
+-- CACHE：缓存数量
+</code></pre>
+    </div>
+  </div>
+
+  <h3>序列（SEQUENCE）</h3>
+  <pre><code>-- 创建序列
+CREATE SEQUENCE mysequence INCREMENT 5 START 100;
+
+-- 绑定序列到表列（OWNED BY）方便自动管理（如删除表时自动删序列）
+-- 取序列下一个值
+SELECT nextval('mysequence');  -- 返回 100, 105, 110 ...
+
+-- 查询当前数据库所有序列名
 SELECT c.relname AS sequence_name FROM pg_class c WHERE c.relkind = 'S';
--- 删除序列
-DROP SEQUENCE IF EXISTS mysequence CASCADE;</code></pre>
-        <h3>为已有列添加/修改/删除 IDENTITY</h3>
-        <pre><code>ALTER TABLE t ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY;
+
+-- 删除序列（可加 CASCADE 级联删除依赖）
+DROP SEQUENCE IF EXISTS mysequence CASCADE;
+</code></pre>
+
+  <h3>为已有列添加/修改/删除 IDENTITY 属性</h3>
+  <pre><code>-- 添加 GENERATED ALWAYS AS IDENTITY
+ALTER TABLE t ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY;
+
+-- 修改为 GENERATED BY DEFAULT AS IDENTITY
 ALTER TABLE t ALTER COLUMN id SET GENERATED BY DEFAULT;
+
+-- 修改起始值和步长
 ALTER TABLE t ALTER COLUMN id SET (START WITH 1000, INCREMENT BY 10);
-ALTER TABLE t ALTER COLUMN id DROP IDENTITY;</code></pre>
-      </article>
+
+-- 删除 IDENTITY 属性，变为普通列
+ALTER TABLE t ALTER COLUMN id DROP IDENTITY;
+</code></pre>
+</article>
+
 
       <article class="card anchor" id="s18">
-        <h2>18）ALTER TABLE / DROP TABLE</h2>
-        <pre><code>-- 多操作合并
+  <h2>18）ALTER TABLE / DROP TABLE</h2>
+  <pre><code>-- ALTER TABLE 支持一次多操作合并执行，方便批量修改表结构
 ALTER TABLE users
-  ADD COLUMN email TEXT,
-  DROP COLUMN temp_data,
-  RENAME COLUMN full_name TO name;
+  ADD COLUMN email TEXT,              -- 添加新列 email，类型为 TEXT
+  DROP COLUMN temp_data,              -- 删除已有列 temp_data
+  RENAME COLUMN full_name TO name;   -- 重命名列 full_name 为 name
 
 -- 删除表
-DROP TABLE users;
-DROP TABLE orders, products;
-DROP TABLE IF EXISTS temp_data;   -- 安全删除
-DROP TABLE orders CASCADE;        -- 连同依赖</code></pre>
-      </article>
+DROP TABLE users;                     -- 删除单个表 users
+DROP TABLE orders, products;          -- 同时删除多个表 orders 和 products
+
+-- 安全删除：只有表存在时才删除，避免报错
+DROP TABLE IF EXISTS temp_data;
+
+-- 级联删除：删除表及其依赖（如外键、视图等）
+DROP TABLE orders CASCADE;
+</code></pre>
+  <p>注：</p>
+  <ul>
+    <li><code>ALTER TABLE</code> 多操作时用逗号分隔，每行一条操作，执行顺序自上而下。</li>
+    <li><code>DROP TABLE</code> 默认不删除依赖，除非加上 <code>CASCADE</code>，否则删除时依赖会报错。</li>
+    <li>建议删除表前先确认无误，尤其带有依赖关系的表。</li>
+  </ul>
+</article>
+
 
       <article class="card anchor" id="s19">
         <h2>19）案例：按日统计售卖率（PostgreSQL 版）</h2>
@@ -632,52 +864,83 @@ ORDER BY 1;
       </article>
 
       <article class="card anchor" id="s20">
-        <h2>20）DISTINCT ON（每组取一行）</h2>
-        <pre><code>-- 取每个 user_id 的最新一条记录
+  <h2>20）DISTINCT ON（每组取一行）</h2>
+  <pre><code>-- 取每个 user_id 的最新一条记录
 SELECT DISTINCT ON (user_id) *
 FROM logs
 ORDER BY user_id, created_at DESC;
 </code></pre>
-        <p class="meta">必须结合合适的 <code>ORDER BY</code> 确定每组保留行。</p>
-      </article>
+  <p class="meta">
+    <b>说明：</b><br>
+    DISTINCT ON 会根据括号内的列（这里是 user_id）分组，<br>
+    并从每组中选取 ORDER BY 排序后第一条记录。<br>
+    这里结合 <code>ORDER BY user_id, created_at DESC</code>，<br>
+    确保每个用户取到的都是最新（created_at 最大）的一条日志。<br><br>
+    <b>注意：</b> DISTINCT ON 必须搭配合适的 ORDER BY，否则结果可能不符合预期。
+  </p>
+</article>
+
 
       <article class="card anchor" id="s21">
-        <h2>21）分页：LIMIT/OFFSET 与锚点翻页</h2>
-        <pre><code>-- 传统分页（大偏移性能差）
-SELECT ... ORDER BY id LIMIT 20 OFFSET 2000;
+  <h2>21）分页：LIMIT/OFFSET 与锚点翻页</h2>
+  <pre><code>-- 传统分页（使用 OFFSET）
+SELECT * FROM table_name
+ORDER BY id
+LIMIT 20 OFFSET 2000;
+-- 缺点：当 OFFSET 很大时，查询效率下降，因为数据库需要跳过大量记录。
 
--- 锚点式（更高效，基于上次最后一条的 id）
-SELECT ... WHERE id &gt; :last_id ORDER BY id LIMIT 20;
+-- 锚点翻页（基于上次最后一条记录的 id，性能更好）
+SELECT * FROM table_name
+WHERE id &gt; :last_id  -- 只查询比上次最后一条 id 大的记录
+ORDER BY id
+LIMIT 20;
+-- 优点：不需要扫描和跳过大量数据，适合大数据量分页。
 </code></pre>
-      </article>
+  <p class="meta">
+    <b>总结：</b><br>
+    传统分页简单易用，但 OFFSET 大时性能差。<br>
+    锚点翻页需要记录上次最后一条数据的 id，适合性能敏感场景。
+  </p>
+</article>
+
 
       <article class="card anchor" id="s22">
-        <h2>22）布尔数据类型（BOOLEAN）</h2>
-        <pre><code>CREATE TABLE users (
+  <h2>22）布尔数据类型（BOOLEAN）</h2>
+  <pre><code>CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   is_active BOOLEAN
 );
 
--- 合法写法
+-- 合法插入示例
 INSERT INTO users(is_active) VALUES (TRUE);
-INSERT INTO users(is_active) VALUES ('t');
+INSERT INTO users(is_active) VALUES ('t');      -- PostgreSQL 识别 't' 为 TRUE
 INSERT INTO users(is_active) VALUES (FALSE);
+INSERT INTO users(is_active) VALUES ('f');      -- PostgreSQL 识别 'f' 为 FALSE
+INSERT INTO users(is_active) VALUES (NULL);     -- NULL 表示未知或无值
 
--- 查询
-SELECT * FROM users WHERE is_active;        -- 等价于 is_active = TRUE
+-- 查询示例
+SELECT * FROM users WHERE is_active;            -- 等价于 is_active = TRUE
+SELECT * FROM users WHERE NOT is_active;        -- 等价于 is_active = FALSE
+SELECT * FROM users WHERE is_active IS NULL;    -- 查询布尔字段为 NULL 的记录
 </code></pre>
-        <p class="meta">布尔值等价写法：<code>true/t/yes/y/1</code> 与 <code>false/f/no/n/0</code>；<code>NULL</code> 表示未知。</p>
-      </article>
+  <p class="meta">
+    布尔值的等价写法：<br>
+    TRUE：true, t, yes, y, 1<br>
+    FALSE：false, f, no, n, 0<br>
+    NULL：表示未知或无值
+  </p>
+</article>
 
-      <article class="card anchor" id="s23">
-        <h2>23）字符数据类型</h2>
-        <h3>主要类型</h3>
-        <ul>
-          <li><b>TEXT</b>：不限制长度，推荐</li>
-          <li><b>VARCHAR(n)</b>：最大长度为 n，超长插入失败</li>
-          <li><b>CHAR(n)</b>：定长，不足补空格（很少使用）</li>
-        </ul>
-        <pre><code>CREATE TABLE users (
+
+<article class="card anchor" id="s23">
+  <h2>23）字符数据类型</h2>
+  <h3>主要类型</h3>
+  <ul>
+    <li><b>TEXT</b>：不限制长度，适合大部分场景，推荐使用</li>
+    <li><b>VARCHAR(n)</b>：限制最大长度为 n，超长插入会失败</li>
+    <li><b>CHAR(n)</b>：定长字符串，不足部分自动补空格，使用较少</li>
+  </ul>
+  <pre><code>CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(30),
   full_name TEXT,
@@ -687,74 +950,101 @@ SELECT * FROM users WHERE is_active;        -- 等价于 is_active = TRUE
 INSERT INTO users (username, full_name, gender)
 VALUES ('alice', 'Alice Wonderland', 'F');
 </code></pre>
-        <h3>常用函数</h3>
-        <pre><code>LENGTH(str) / char_length(str)
-TRIM(str) / LOWER(str) / UPPER(str)
-SUBSTRING(str FROM x FOR y)
-CONCAT(a, b)
--- 不区分大小写匹配：ILIKE</code></pre>
-      </article>
+  <h3>常用函数</h3>
+  <pre><code>LENGTH(str) / char_length(str)      -- 计算字符串长度（字符数）
+TRIM(str)                            -- 去除字符串首尾空白
+LOWER(str) / UPPER(str)             -- 转小写 / 转大写
+SUBSTRING(str FROM x FOR y)         -- 截取子串，从第 x 个字符开始，长度为 y
+CONCAT(a, b, ...)                   -- 拼接多个字符串
 
-      <article class="card anchor" id="s24">
-        <h2>24）数值类型总览与函数</h2>
-        <h3>整数</h3>
-        <ul>
-          <li><code>SMALLINT</code> / <code>INTEGER</code> / <code>BIGINT</code></li>
-        </ul>
-        <h3>浮点</h3>
-        <ul>
-          <li><code>REAL</code>（约 6 位），<code>DOUBLE PRECISION</code>（约 15 位）</li>
-        </ul>
-        <h3>定点/高精度</h3>
-        <ul>
-          <li><code>NUMERIC(p, s)</code> / <code>DECIMAL(p, s)</code>（别名）— 金额推荐</li>
-        </ul>
-        <h3>常用函数/转换</h3>
-        <pre><code>ROUND(n, d), CEIL(n), FLOOR(n), ABS(n), POWER(x,y), MOD(x,y)
-CAST(... AS type), '123'::INTEGER</code></pre>
-        <p class="meta">金融金额类请用 <code>NUMERIC</code>，避免浮点误差。</p>
-      </article>
+-- 模糊匹配（不区分大小写）
+SELECT * FROM users WHERE username ILIKE '%alice%';
+</code></pre>
+</article>
+
+
+     <article class="card anchor" id="s24">
+  <h2>24）数值类型总览与函数</h2>
+  <h3>整数类型</h3>
+  <ul>
+    <li><code>SMALLINT</code>：2 字节，范围约 -32,768 到 32,767</li>
+    <li><code>INTEGER</code>（INT）：4 字节，常用，范围约 -21 亿到 21 亿</li>
+    <li><code>BIGINT</code>：8 字节，大整数，适合非常大数值</li>
+  </ul>
+  <h3>浮点数类型</h3>
+  <ul>
+    <li><code>REAL</code>：4 字节，约 6 位有效数字，精度较低</li>
+    <li><code>DOUBLE PRECISION</code>：8 字节，约 15 位有效数字，精度较高</li>
+  </ul>
+  <h3>定点数 / 高精度数值</h3>
+  <ul>
+    <li><code>NUMERIC(p, s)</code> / <code>DECIMAL(p, s)</code>（别名）— 精确数值，适合存储金额、财务数据，避免浮点误差</li>
+    <li>p：总位数，s：小数点后位数</li>
+  </ul>
+  <h3>常用数值函数 / 类型转换</h3>
+  <pre><code>ROUND(n, d)    -- 四舍五入，保留 d 位小数
+CEIL(n)         -- 向上取整
+FLOOR(n)        -- 向下取整
+ABS(n)          -- 绝对值
+POWER(x, y)     -- x 的 y 次幂
+MOD(x, y)       -- 取模，x % y
+
+CAST(... AS type) 或 '123'::INTEGER  -- 显式类型转换
+</code></pre>
+  <p class="meta">建议用 <code>NUMERIC</code> 存储金额和需要高精度的数值，避免浮点类型的精度问题。</p>
+</article>
+
 
       <article class="card anchor" id="s25">
-        <h2>25）整数类型与 SERIAL（强化）</h2>
-        <pre><code>CREATE TABLE numbers (
-  small_number SMALLINT,
-  normal_number INTEGER,
-  big_number BIGINT
+  <h2>25）整数类型与 SERIAL（强化）</h2>
+  <pre><code>CREATE TABLE numbers (
+  small_number SMALLINT,      -- 2 字节，范围 -32,768 到 32,767，适合小数值
+  normal_number INTEGER,      -- 4 字节，范围约 -21 亿到 21 亿，常用整数类型
+  big_number BIGINT           -- 8 字节，大整数，适合非常大数值
 );
 
--- 自增（伪类型）
+-- SERIAL 是伪类型，自动创建一个自增序列，常用作主键
 CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
+  id SERIAL PRIMARY KEY,      -- 等价于 INTEGER + 自动关联的序列 + 默认值 nextval(...)
   name TEXT
 );
 </code></pre>
-        <p class="meta">选择建议：小范围 <code>SMALLINT</code>、常用 <code>INTEGER</code>、极大范围 <code>BIGINT</code>。</p>
-      </article>
+  <p class="meta">选择建议：<code>SMALLINT</code> 用于小范围数值，<code>INTEGER</code> 用于常用范围，<code>BIGINT</code> 用于超大数值。<br>
+  SERIAL 是简化写法，适合自动增长的主键字段。</p>
+</article>
+
 
       <article class="card anchor" id="s26">
-        <h2>26）日期与时间数据类型（总览）</h2>
-        <ul>
-          <li><code>DATE</code>、<code>TIME</code>、<code>TIME WITH TIME ZONE</code></li>
-          <li><code>TIMESTAMP</code>、<code>TIMESTAMPTZ</code>（带时区）</li>
-          <li><code>INTERVAL</code>（时间间隔）</li>
-        </ul>
-        <pre><code>CREATE TABLE events (
+  <h2>26）日期与时间数据类型（总览）</h2>
+  <ul>
+    <li><code>DATE</code>：只包含日期（年-月-日），不含时间</li>
+    <li><code>TIME</code>：只包含时间（时:分:秒），不含日期</li>
+    <li><code>TIME WITH TIME ZONE</code>（<code>TIMETZ</code>）：含时区的时间</li>
+    <li><code>TIMESTAMP</code>：包含日期和时间，但不含时区</li>
+    <li><code>TIMESTAMPTZ</code>（带时区时间戳）：包含日期和时间，带时区信息，推荐使用</li>
+    <li><code>INTERVAL</code>：表示时间段/时间间隔，比如“3 days”，“2 hours 15 minutes”</li>
+  </ul>
+  <pre><code>CREATE TABLE events (
   id SERIAL PRIMARY KEY,
   title TEXT,
-  event_date DATE,
-  start_time TIME,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  event_date DATE,                   -- 事件日期，只关心日期部分
+  start_time TIME,                   -- 事件开始时间，不含日期
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP  -- 创建时间，自动记录插入时间
 );
 
--- 常用
-SELECT CURRENT_DATE, CURRENT_TIME, CURRENT_TIMESTAMP, NOW();
+-- 获取当前日期、时间和时间戳
+SELECT CURRENT_DATE;                 -- 当前日期，格式 YYYY-MM-DD
+SELECT CURRENT_TIME;                 -- 当前时间，格式 HH:MI:SS
+SELECT CURRENT_TIMESTAMP;            -- 当前时间戳，无时区
+SELECT NOW();                       -- 等同 CURRENT_TIMESTAMP
+
+-- 时间运算，当前时间加 3 天
 SELECT NOW() + INTERVAL '3 days';
 
--- 格式化
-SELECT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS');
-</code></pre>
-      </article>
+-- 时间格式化输出
+SELECT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS');</code></pre>
+  <p class="meta">建议用 <code>TIMESTAMPTZ</code> 处理时间戳，方便跨时区转换和计算。</p>
+</article>
 
       <article class="card anchor" id="s27">
         <h2>27）两种时间戳：TIMESTAMP vs TIMESTAMPTZ</h2>
@@ -775,103 +1065,170 @@ INSERT INTO t2 (created_at) VALUES ('2025-09-02 14:00:00+08');
       </article>
 
       <article class="card anchor" id="s28">
-        <h2>28）INTERVAL（时间间隔）</h2>
-        <pre><code>INTERVAL '1 year 2 months 3 days'
+  <h2>28）INTERVAL（时间间隔）</h2>
+  <p>INTERVAL 表示时间段，可以用来加减日期时间，支持年、月、天、小时、分钟、秒等多种单位。</p>
+  <pre><code>-- 常见写法
+INTERVAL '1 year 2 months 3 days'
 INTERVAL '4 hours 30 minutes'
+INTERVAL '15 minutes 10 seconds'
 
+-- 创建包含时间间隔字段的表
 CREATE TABLE events (
   id SERIAL PRIMARY KEY,
   event_name TEXT NOT NULL,
-  duration INTERVAL NOT NULL
+  duration INTERVAL NOT NULL   -- 事件持续时长
 );
 
-SELECT NOW() + INTERVAL '1 day';
-SELECT NOW() - INTERVAL '2 hours';</code></pre>
-      </article>
+-- 时间运算示例
+SELECT NOW() + INTERVAL '1 day';      -- 当前时间加一天
+SELECT NOW() - INTERVAL '2 hours';    -- 当前时间减两小时
 
-      <article class="card anchor" id="s29">
-        <h2>29）UUID</h2>
-        <pre><code>CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- 也可以用数值乘以时间间隔
+SELECT NOW() + (INTERVAL '1 hour' * 3);  -- 当前时间加3小时
 
+-- 计算时间差，返回 INTERVAL 类型
+SELECT (timestamp '2025-10-01 12:00' - timestamp '2025-09-25 08:30') AS diff;
+
+-- 转换间隔为秒数（浮点数）
+SELECT EXTRACT(EPOCH FROM INTERVAL '1 day 3 hours');  -- 结果：97200（秒）
+
+-- 注意：INTERVAL 支持正负，可以方便做时间加减运算
+</code></pre>
+  <p class="meta">INTERVAL 是处理时间跨度和时间运算的利器，尤其适合统计、调度、计时等场景。</p>
+</article>
+
+
+<article class="card anchor" id="s29">
+  <h2>29）UUID（通用唯一标识符）</h2>
+  <p>UUID 是一种长度固定（128位）的唯一标识符，适合分布式系统生成不重复的主键，避免自增ID冲突。</p>
+  <pre><code>-- 安装扩展，提供UUID生成函数（PostgreSQL 自带 pgcrypto 也可用）
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 创建含UUID主键的用户表
 CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),  -- v4随机UUID
   username TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE
 );
 
--- 生成函数：uuid_generate_v1(), uuid_generate_v4(), pgcrypto: gen_random_uuid()
+-- 常用UUID生成函数：
+-- uuid_generate_v1()  基于时间和MAC地址，含顺序信息
+-- uuid_generate_v4()  基于随机数，最常用
+-- pgcrypto 扩展函数 gen_random_uuid() 另一种生成随机UUID的方法
 </code></pre>
-      </article>
+  <p class="meta">UUID 主键适合分布式、微服务系统或安全要求高的场景。缺点是索引较大，查询速度可能略慢。</p>
+</article>
+
 
       <article class="card anchor" id="s30">
-        <h2>30）数组类型</h2>
-        <pre><code>CREATE TABLE example (
+  <h2>30）数组类型（Array）</h2>
+  <p>PostgreSQL 支持数组类型，可以存储同一列多个值，适合存储标签、分数列表等。</p>
+  <pre><code>-- 创建包含数组字段的表
+CREATE TABLE example (
   id SERIAL PRIMARY KEY,
-  tags   TEXT[],
-  scores INTEGER[]
+  tags TEXT[],          -- 文本数组
+  scores INTEGER[]      -- 整数数组
 );
 
+-- 插入数组数据，使用花括号表示数组元素
 INSERT INTO example (tags, scores) VALUES
 ('{red,green,blue}', '{100,90,80}');
 
--- 访问与函数
-SELECT tags[1] FROM example;
-SELECT array_length(scores, 1) FROM example;
+-- 访问数组元素（索引从1开始）
+SELECT tags[1] FROM example;          -- 取第一个标签 'red'
+
+-- 获取数组长度（维度从1开始）
+SELECT array_length(scores, 1) FROM example;  -- 得到数组长度 3
+
+-- 将数组拆分成多行
 SELECT unnest(tags) FROM example;
 
--- 更新元素
+-- 更新数组中的元素（如把第二个标签改为 'yellow'）
 UPDATE example SET tags[2] = 'yellow' WHERE id = 1;</code></pre>
-      </article>
+  <p class="meta">数组的灵活性强，但查询和维护可能稍复杂，建议合理设计表结构。</p>
+</article>
+
 
       <article class="card anchor" id="s31">
-        <h2>31）JSON / JSONB</h2>
-        <pre><code>CREATE TABLE documents (
+  <h2>31）JSON / JSONB（半结构化数据存储）</h2>
+  <p>PostgreSQL 支持两种 JSON 类型：</p>
+  <ul>
+    <li><b>JSON</b>：存储原始 JSON 文本，保留格式但查询效率稍低。</li>
+    <li><b>JSONB</b>：二进制格式，查询更快，支持索引，推荐使用。</li>
+  </ul>
+  <pre><code>-- 创建含 JSONB 类型字段的表
+CREATE TABLE documents (
   id SERIAL PRIMARY KEY,
   data JSONB NOT NULL
 );
 
+-- 插入 JSON 数据（字符串形式）
 INSERT INTO documents (data)
 VALUES ('{"name": "Alice", "age": 30, "skills": ["SQL", "Python"]}');
 
--- 提取
-SELECT data->>'name' AS name FROM documents;   -- 文本
-SELECT data->'skills' AS skills FROM documents;-- JSON
+-- 提取 JSON 对象字段：
+SELECT data->>'name' AS name FROM documents;    -- 提取文本类型字段（->>）
+SELECT data->'skills' AS skills FROM documents;  -- 提取 JSON 类型字段（->）
 
--- 查询包含
+-- 查询包含特定键值对（类似 WHERE age=30）
 SELECT * FROM documents WHERE data @> '{"age": 30}';
 
--- 更新
+-- 更新 JSON 字段中的某个键值
 UPDATE documents
 SET data = jsonb_set(data, '{age}', '31', false)
-WHERE id = 1;
-</code></pre>
-      </article>
+WHERE id = 1;</code></pre>
+  <p class="meta">JSONB 支持丰富的操作函数和索引，是存储半结构化数据的强大工具。</p>
+</article>
+
 
       <article class="card anchor" id="s32">
-        <h2>32）从 JSON 提取数值并聚合</h2>
-        <pre><code>SELECT
-  MIN((info->'items'->>'qty')::INTEGER),
-  MAX((info->'items'->>'qty')::INTEGER),
-  SUM((info->'items'->>'qty')::INTEGER),
-  AVG((info->'items'->>'qty')::INTEGER)
-FROM orders;
-</code></pre>
-      </article>
+  <h2>32）从 JSON 提取数值并聚合</h2>
+  <p>当 JSON 字段中包含数值，需要做聚合计算时，可以先提取并转换类型，然后用聚合函数处理。</p>
+  <pre><code>SELECT
+  MIN((info->'items'->>'qty')::INTEGER) AS min_qty,
+  MAX((info->'items'->>'qty')::INTEGER) AS max_qty,
+  SUM((info->'items'->>'qty')::INTEGER) AS total_qty,
+  AVG((info->'items'->>'qty')::INTEGER) AS avg_qty
+FROM orders;</code></pre>
+  <p class="meta">
+    说明：<br>
+    - <code>info</code> 是 JSONB 类型列。<br>
+    - <code>-></code> 提取 JSON 对象字段（返回 JSON）。<br>
+    - <code>->></code> 提取文本值（字符串）。<br>
+    - 使用 <code>::INTEGER</code> 将文本转换成整数，方便数值计算。<br>
+    - 聚合函数包括：<code>MIN</code>、<code>MAX</code>、<code>SUM</code>、<code>AVG</code>。
+  </p>
+</article>
+
 
       <article class="card anchor" id="s33">
-        <h2>33）Schema 管理</h2>
-        <pre><code>-- PostgreSQL 不支持直接重命名 Schema
--- 实现“改名”：新建 + 迁移对象 + 删除旧的
+  <h2>33）Schema 管理</h2>
+  <p>PostgreSQL 中 Schema 是数据库对象的命名空间，常用于分组和权限管理。</p>
+  <pre><code>-- PostgreSQL 不支持直接重命名 Schema
+-- 若想“重命名”，需要：
+-- 1. 新建一个新 Schema
 CREATE SCHEMA new_schema_name;
 
+-- 2. 迁移原 Schema 中的对象（表、视图等）到新 Schema
 ALTER TABLE old_schema.table_name SET SCHEMA new_schema_name;
+-- 重复执行上述命令迁移所有对象
 
+-- 3. 删除旧 Schema（可选）
 DROP SCHEMA old_schema_name [CASCADE | RESTRICT];
 
+-- 修改 Schema 所有者
 ALTER SCHEMA schema_name OWNER TO new_owner;
 
+-- 设置搜索路径，指定查询时默认搜索的 Schema 顺序
 SET search_path TO schema1, schema2, public;</code></pre>
-      </article>
+  <p class="meta">
+    说明：<br>
+    - <code>CASCADE</code> 会连同依赖的对象一起删除，<code>RESTRICT</code> 防止删除有依赖的 Schema。<br>
+    - <code>search_path</code> 决定查询时哪些 Schema 会被搜索，顺序优先匹配前面的。<br>
+    - 迁移对象时需要对每个对象执行 <code>ALTER ... SET SCHEMA</code>，没有批量迁移命令。
+  </p>
+</article>
+
 
       <article class="card anchor" id="s34">
         <h2>34）COALESCE 笔记</h2>
