@@ -147,6 +147,12 @@
   <ul>
     <li><b>字符串拼接：</b> <code>expr1 || expr2</code></li>
     <li><b>长度：</b> <code>char_length(text)</code>（字符数），<code>octet_length(text)</code>（字节数）；<code>length(text)</code> 等价于 <code>char_length</code></li>
+    <li><b>截取：</b> <code>left(text, n)</code> / <code>right(text, n)</code> / <code>substr(text, start [, length])</code></li>
+    <li><b>查找位置：</b> <code>position(substring IN string)</code></li>
+    <li><b>替换：</b> <code>replace(string, from, to)</code></li>
+    <li><b>拆分：</b> <code>split_part(string, delimiter, field)</code></li>
+    <li><b>去除空格：</b> <code>trim([LEADING|TRAILING|BOTH] chars FROM string)</code></li>
+    <li><b>大小写转换：</b> <code>lower(text)</code> / <code>upper(text)</code> / <code>initcap(text)</code></li>
   </ul>
   <pre><code>-- 取第一个匹配子串（等价 REGEXP_SUBSTR 的基本场景）
 SELECT substring('abc-123-def' FROM '\d+');  -- → '123'
@@ -154,8 +160,14 @@ SELECT substring('abc-123-def' FROM '\d+');  -- → '123'
 -- 全部匹配（返回 setof text）
 SELECT regexp_matches('a1b22c333', '\d+', 'g');  -- 多行返回 1,22,333
 
--- 是否匹配
+-- 是否匹配（区分大小写）
 SELECT 'foo@example.com' ~ '^[^@]+@[^@]+$';  -- true/false
+
+-- 是否匹配（不区分大小写）
+SELECT 'Hello' ~* 'hello';  -- true
+
+-- 正则替换
+SELECT regexp_replace('abc123def456', '\d+', 'X', 'g');  -- → 'abcXdefX'
 </code></pre>
   <section>
     <h3>PostgreSQL 正则表达式笔记</h3>
@@ -166,6 +178,8 @@ SELECT 'foo@example.com' ~ '^[^@]+@[^@]+$';  -- true/false
         返回第一个匹配的第一个捕获分组内容（如果有分组），否则返回整个匹配的子串。</li>
       <li><code>REGEXP_matches('text', '正则表达式', 'g')</code>  
         返回所有匹配的结果（数组形式）。'g' 表示全局匹配。</li>
+      <li><code>REGEXP_replace('text', '正则表达式', '替换内容', 'g')</code>  
+        使用正则表达式进行替换，'g' 表示全局替换。</li>
     </ul>
 
     <h4>常用正则符号</h4>
@@ -197,6 +211,9 @@ SELECT 'foo@example.com' ~ '^[^@]+@[^@]+$';  -- true/false
     <h4>正则分组 () 与反向引用</h4>
     <p><code>(abc)+</code> 表示整体重复；<code>(\w+)\s+\1</code> 表示相同单词重复。</p>
 
+    <h4>命名分组（PostgreSQL 15+）</h4>
+    <p><code>(?&lt;name&gt;pattern)</code> 可为分组命名，例如：<code>(?&lt;digits&gt;\d+)</code></p>
+
     <h4>单词边界</h4>
     <p><code>\bthe\b</code> 匹配完整单词 "the"</p>
 
@@ -204,6 +221,13 @@ SELECT 'foo@example.com' ~ '^[^@]+@[^@]+$';  -- true/false
     <pre><code><.*>   -- 贪婪，匹配 &lt;abc&gt;&lt;def&gt;
 <.*?>  -- 非贪婪，匹配 &lt;abc&gt;
 </code></pre>
+
+    <h4>匹配行为说明</h4>
+    <ul>
+      <li><code>~</code>：正则匹配（区分大小写）</li>
+      <li><code>~*</code>：正则匹配（不区分大小写）</li>
+      <li><code>!~</code> / <code>!~*</code>：正则不匹配</li>
+    </ul>
 
     <h4>补充说明</h4>
     <ul>
